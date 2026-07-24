@@ -133,10 +133,20 @@ class _RecordingServer:
                     length = len(server.body)
                 self.send_header("Content-Length", str(length))
                 self.end_headers()
-                self.wfile.write(server.body)
+                try:
+                    self.wfile.write(server.body)
+                except (BrokenPipeError, ConnectionResetError):
+                    # The client caps its read and may close early; ignore.
+                    pass
 
             def log_message(self, *args):
                 pass
+
+            def handle_one_request(self):
+                try:
+                    super().handle_one_request()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
 
         self._httpd = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self._httpd.server_address[1]}"
