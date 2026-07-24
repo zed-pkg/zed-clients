@@ -1,12 +1,19 @@
 import email
 import email.policy
+import hashlib
+import http.server
 import json
+import os
+import tempfile
+import threading
 import unittest
 from unittest import mock
 
 from zed_pkg_client import (
     PackageMetadata,
     PublishResponse,
+    VersionMetadata,
+    ZedApiError,
     ZedClient,
     artifact_path,
     package_path,
