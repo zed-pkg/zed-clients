@@ -121,14 +121,21 @@ func (c *Client) do(method, path string, body io.Reader, contentType string, out
 		return err
 	}
 	if resp.StatusCode >= 400 {
-		apiErr := &APIError{Status: resp.StatusCode, Code: "unknown", Message: string(payload)}
-		_ = json.Unmarshal(payload, apiErr)
-		return apiErr
+		return newAPIError(resp.StatusCode, payload)
 	}
 	if out != nil {
 		return json.Unmarshal(payload, out)
 	}
 	return nil
+}
+
+// newAPIError builds the typed error from an error-response body, keeping the
+// "unknown" code when the body is not ApiError JSON.
+func newAPIError(status int, payload []byte) *APIError {
+	apiErr := &APIError{Status: status, Code: "unknown", Message: string(payload)}
+	_ = json.Unmarshal(payload, apiErr)
+	apiErr.Status = status
+	return apiErr
 }
 
 func (c *Client) GetPackage(org, name string) (*PackageMetadata, error) {
