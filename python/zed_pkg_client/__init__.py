@@ -205,14 +205,35 @@ class ZedClient:
     def download_artifact(self, version: VersionMetadata, dest_path: str) -> None:
         """Download and sha256-verify an artifact."""
         url = version.download_url
-        if not url.startswith("http"):
+        # An absolute url (any scheme) must clear the scheme/host policy; a bare
+        # path is resolved against the trusted registry base.
+        if "://" in url:
+            url = self._allowed_download_url(url)
+        else:
             url = f"{self.base}{artifact_path(version.sha256)}"
-        request = urllib.request.Request(url, headers=self._headers())
+        # Deliberately no auth header: download_url may point at a third-party
+        # host (e.g. a presigned S3/R2 url), and sending the bearer token there
+        # would leak it. Only a user-agent is sent.
+        request = urllib.request.Request(url, headers={"user-agent": USER_AGENT})
+        limit = _download_limit(version.size)
         try:
-            with urllib.request.urlopen(request) as response:
-                payload = response.read()
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                declared = response.headers.get("Content-Length")
+                if declared is not None:
+                    try:
+                        if int(declared) > limit:
+                            raise ZedApiError(
+                                0, "artifact_too_large", f"artifact exceeded {limit} bytes; refusing"
+                            )
+                    except ValueError:
+                        pass
+                # Read one extra byte so an over-limit body is detected without
+                # buffering the whole thing.
+                payload = response.read(limit + 1)
         except urllib.error.HTTPError as error:
             raise _api_error(error) from None
+        if len(payload) > limit:
+            raise ZedApiError(0, "artifact_too_large", f"artifact exceeded {limit} bytes; refusing")
         actual = hashlib.sha256(payload).hexdigest()
         if actual != version.sha256:
             raise ZedApiError(0, "sha256_mismatch", f"expected {version.sha256}, got {actual}")
