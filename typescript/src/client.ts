@@ -28,7 +28,7 @@ function downloadLimit(size: number): number {
 }
 
 /** Stream a response body, refusing once more than `limit` bytes arrive. */
-async function readCapped(response: Response, limit: number): Promise<Uint8Array> {
+async function readCapped(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   const tooLarge = () =>
     new ZedApiError(0, "artifact_too_large", `artifact exceeded ${limit} bytes; refusing`);
   const body = response.body;
