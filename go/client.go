@@ -231,27 +231,39 @@ func (c *Client) ClaimOrg(slug string) (*ClaimOrgResponse, error) {
 // DownloadArtifact fetches and sha256-verifies an artifact to destPath.
 func (c *Client) DownloadArtifact(v *VersionMetadata, destPath string) error {
 	target := v.DownloadURL
-	if !strings.HasPrefix(target, "http") {
+	if strings.HasPrefix(target, "http") {
+		validated, err := c.allowedDownloadURL(target)
+		if err != nil {
+			return err
+		}
+		target = validated
+	} else {
 		target = c.Base + ArtifactPath(v.Sha256)
 	}
 	req, err := http.NewRequest(http.MethodGet, target, nil)
 	if err != nil {
 		return err
 	}
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
+	// Deliberately no Authorization header: download_url may point at a
+	// third-party host (e.g. a presigned S3/R2 URL from the registry
+	// response), and sending the bearer token there would leak it.
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	payload, err := io.ReadAll(resp.Body)
+	// Bound the read to guard against OOM / disk exhaustion; read one extra
+	// byte so an over-limit body can be detected.
+	limit := downloadLimit(v.Size)
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return newAPIError(resp.StatusCode, payload)
+	}
+	if uint64(len(payload)) > limit {
+		return &APIError{Code: "artifact_too_large", Message: fmt.Sprintf("artifact exceeded %d bytes; refusing", limit)}
 	}
 	sum := sha256.Sum256(payload)
 	if actual := hex.EncodeToString(sum[:]); actual != v.Sha256 {
