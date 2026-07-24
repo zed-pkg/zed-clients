@@ -4,6 +4,7 @@ mirroring the JSON Schemas in zed-interfaces/schemas/."""
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import urllib.error
 import urllib.parse
@@ -15,6 +16,30 @@ from typing import Any, Optional
 DEFAULT_REGISTRY_URL = "https://registry.zpkg.tech"
 
 USER_AGENT = "zed-client-python/0.1.0"
+
+# Bounds every request (connect + read), in seconds.
+DEFAULT_TIMEOUT = 30.0
+
+# Hard ceiling on artifact downloads, matching the server's MAX_ARTIFACT_BYTES
+# default (100 MiB); plus the slack added to a version's declared size.
+MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
+_DOWNLOAD_SLACK = 1024 * 1024
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _download_limit(size: int) -> int:
+    """The declared size (when sane) plus slack, capped by the ceiling."""
+    if size and size > 0:
+        return min(size + _DOWNLOAD_SLACK, MAX_ARTIFACT_BYTES)
+    return MAX_ARTIFACT_BYTES
 
 
 class ZedApiError(Exception):
