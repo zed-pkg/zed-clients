@@ -20,6 +20,7 @@ export interface PackageMetadata {
   repo_url: string;
   latest?: string | null;
   versions: string[];
+  version_scheme?: VersionScheme;
 }
 
 export interface VersionMetadata {
