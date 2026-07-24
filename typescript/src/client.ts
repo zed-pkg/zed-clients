@@ -197,7 +197,7 @@ export class ZedClient {
     const limit = downloadLimit(version.size);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let bytes: Uint8Array;
+    let bytes: Uint8Array<ArrayBuffer>;
     try {
       // Deliberately no auth header: download_url may point at a third-party
       // host (e.g. a presigned S3/R2 url), and the token must not leak there.
