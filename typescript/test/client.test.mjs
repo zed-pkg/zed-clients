@@ -1,12 +1,32 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   ZedClient,
   ZedApiError,
+  MAX_ARTIFACT_BYTES,
   packagePath,
   versionPath,
   filePath,
 } from "../dist/index.js";
+
+function makeVersion(overrides = {}) {
+  return {
+    org: "acme",
+    name: "kit",
+    version: "1.2.0",
+    sha256: "",
+    size: 0,
+    format: "tar.gz",
+    vcs_tag: "v1.2.0",
+    download_url: "",
+    published_at: "2024-01-01T00:00:00Z",
+    yanked: false,
+    ...overrides,
+  };
+}
+
+const sha256Hex = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 test("url helpers match the contract", () => {
   assert.equal(packagePath("acme", "kit"), "/v1/packages/acme/kit");
