@@ -101,15 +101,18 @@ impl Client {
     }
 
     pub fn get_package(&self, org: &str, name: &str) -> Result<PackageMetadata> {
-        let response = self.http.get(self.url(&registry::package_path(org, name))).send()?;
+        let path = registry::package_path(&encode_segment(org), &encode_segment(name));
+        let response = self.http.get(self.url(&path)).send()?;
         Ok(Self::check(response)?.json()?)
     }
 
     pub fn get_version(&self, org: &str, name: &str, version: &str) -> Result<VersionMetadata> {
-        let response = self
-            .http
-            .get(self.url(&registry::version_path(org, name, version)))
-            .send()?;
+        let path = registry::version_path(
+            &encode_segment(org),
+            &encode_segment(name),
+            &encode_segment(version),
+        );
+        let response = self.http.get(self.url(&path)).send()?;
         Ok(Self::check(response)?.json()?)
     }
 
