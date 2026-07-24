@@ -206,6 +206,20 @@ mod tests {
     }
 
     #[test]
+    fn path_segments_are_percent_encoded() {
+        assert_eq!(encode_segment("1.2.0"), "1.2.0");
+        assert_eq!(encode_segment("release candidate/1"), "release%20candidate%2F1");
+        assert_eq!(
+            registry::version_path(
+                &encode_segment("acme"),
+                &encode_segment("kit"),
+                &encode_segment("v/2?x"),
+            ),
+            "/v1/packages/acme/kit/versions/v%2F2%3Fx"
+        );
+    }
+
+    #[test]
     fn base_url_is_trimmed() {
         let client = Client::new("https://registry.zpkg.tech/").unwrap();
         assert_eq!(
