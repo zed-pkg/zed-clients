@@ -138,7 +138,7 @@ impl Client {
         let url = if version.download_url.starts_with("http") {
             version.download_url.clone()
         } else {
-            self.url(&registry::artifact_path(&version.sha256))
+            self.url(&registry::artifact_path(&encode_segment(&version.sha256)))
         };
         let mut response = Self::check(self.http.get(url).send()?)?;
         let mut bytes = Vec::new();
