@@ -125,17 +125,30 @@ export class ZedClient {
   private readonly base: string;
   private readonly token?: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(options: ClientOptions = {}) {
     this.base = (options.registryUrl ?? DEFAULT_REGISTRY_URL).replace(/\/+$/, "");
     this.token = options.token;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
-    const response = await this.fetchImpl(`${this.base}${path}`, { ...init, headers });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.base}${path}`, {
+        ...init,
+        headers,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!response.ok) {
       const text = await response.text();
       let body: ApiErrorBody = { code: "unknown", message: text };
