@@ -78,6 +78,7 @@ impl Client {
             token: None,
             http: reqwest::blocking::Client::builder()
                 .user_agent(concat!("zed-client-rust/", env!("CARGO_PKG_VERSION")))
+                .timeout(DEFAULT_TIMEOUT)
                 .build()?,
         })
     }
