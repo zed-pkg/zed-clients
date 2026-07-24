@@ -124,7 +124,36 @@ type Client struct {
 }
 
 func New(base string) *Client {
-	return &Client{Base: strings.TrimRight(base, "/"), HTTP: http.DefaultClient}
+	return &Client{Base: strings.TrimRight(base, "/"), HTTP: &http.Client{Timeout: DefaultTimeout}}
+}
+
+// allowedDownloadURL enforces the download-url scheme policy: https is always
+// allowed; http only for loopback hosts or when the registry base is itself
+// http (the operator already accepted plaintext for that registry). A
+// malicious registry response must not be able to redirect fetches to
+// plaintext or unexpected hosts.
+func (c *Client) allowedDownloadURL(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", &APIError{Code: "bad_download_url", Message: fmt.Sprintf("bad download url %q: %v", raw, err)}
+	}
+	host := u.Hostname()
+	loopback := host == "localhost"
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		loopback = true
+	}
+	switch u.Scheme {
+	case "https":
+		return raw, nil
+	case "http":
+		if loopback || strings.HasPrefix(c.Base, "http://") {
+			return raw, nil
+		}
+	}
+	return "", &APIError{
+		Code:    "insecure_download_url",
+		Message: fmt.Sprintf("refusing artifact download over %q from %s (https required for non-local registries)", u.Scheme, raw),
+	}
 }
 
 func (c *Client) do(method, path string, body io.Reader, contentType string, out any) error {
