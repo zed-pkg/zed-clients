@@ -282,4 +282,125 @@ mod tests {
             "https://registry.zpkg.tech/v1/packages/acme/kit"
         );
     }
+
+    #[test]
+    fn download_limit_caps_at_ceiling() {
+        assert_eq!(download_limit(0), MAX_ARTIFACT_BYTES);
+        assert_eq!(download_limit(10), 10 + DOWNLOAD_SLACK);
+        assert_eq!(download_limit(MAX_ARTIFACT_BYTES), MAX_ARTIFACT_BYTES);
+    }
+
+    #[test]
+    fn insecure_download_urls_are_rejected() {
+        let client = Client::new("https://registry.zpkg.tech").unwrap();
+        for raw in ["http://evil.example/artifact", "file:///etc/passwd"] {
+            let err = client.allowed_download_url(raw).unwrap_err();
+            assert!(
+                matches!(&err, Error::Other(m) if m.contains("refusing")),
+                "expected refusal for {raw}, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn loopback_http_download_url_is_allowed() {
+        let client = Client::new("https://registry.zpkg.tech").unwrap();
+        assert!(client.allowed_download_url("http://127.0.0.1:8080/a").is_ok());
+        assert!(client.allowed_download_url("http://localhost/a").is_ok());
+        assert!(client.allowed_download_url("https://cdn.example/a").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod download_tests {
+    use super::*;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    fn version(url: &str, sha256: &str, size: u64) -> VersionMetadata {
+        VersionMetadata {
+            org: "acme".into(),
+            name: "kit".into(),
+            version: "1.2.0".into(),
+            sha256: sha256.into(),
+            size,
+            format: Default::default(),
+            vcs_tag: "v1.2.0".into(),
+            vcs_commit: None,
+            download_url: url.into(),
+            published_at: "2024-01-01T00:00:00Z".into(),
+            yanked: false,
+        }
+    }
+
+    /// One-shot localhost server returning `body`; the captured raw request
+    /// (headers included) comes back over the channel.
+    fn spawn_server(body: Vec<u8>) -> (String, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let mut req = Vec::new();
+                loop {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    req.extend_from_slice(&buf[..n]);
+                    if req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                let _ = tx.send(String::from_utf8_lossy(&req).into_owned());
+                let header = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(&body);
+                let _ = stream.flush();
+            }
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    #[test]
+    fn download_omits_auth_and_verifies_sha() {
+        let body = b"artifact-bytes".to_vec();
+        let sha = hex::encode(Sha256::digest(&body));
+        let (base, rx) = spawn_server(body.clone());
+        let client = Client::new(&base).unwrap().with_token("zpkg_t");
+        let dir =
+            std::env::temp_dir().join(format!("zed-dl-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let dest = dir.join("artifact.tar.gz");
+        let v = version(&format!("{base}/artifact"), &sha, body.len() as u64);
+        client.download_artifact(&v, &dest).unwrap();
+        let req = rx.recv().unwrap();
+        assert!(
+            !req.to_lowercase().contains("authorization"),
+            "bearer token leaked to download host: {req}"
+        );
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn download_rejects_oversize_body() {
+        let limit = download_limit(1);
+        let body = vec![0u8; (limit + 64) as usize];
+        let (base, _rx) = spawn_server(body);
+        let client = Client::new(&base).unwrap();
+        let dir = std::env::temp_dir().join(format!("zed-dl-big-{}", std::process::id()));
+        let dest = dir.join("artifact.tar.gz");
+        let v = version(&format!("{base}/artifact"), "deadbeef", 1);
+        let err = client.download_artifact(&v, &dest).unwrap_err();
+        assert!(
+            matches!(&err, Error::Other(m) if m.contains("exceeded")),
+            "expected size-cap error, got {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
