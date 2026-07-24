@@ -79,15 +79,15 @@ type PublishResponse struct {
 }
 
 func PackagePath(org, name string) string {
-	return fmt.Sprintf("/v1/packages/%s/%s", org, name)
+	return fmt.Sprintf("/v1/packages/%s/%s", url.PathEscape(org), url.PathEscape(name))
 }
 
 func VersionPath(org, name, version string) string {
-	return fmt.Sprintf("/v1/packages/%s/%s/versions/%s", org, name, version)
+	return fmt.Sprintf("/v1/packages/%s/%s/versions/%s", url.PathEscape(org), url.PathEscape(name), url.PathEscape(version))
 }
 
 func ArtifactPath(sha256 string) string {
-	return "/v1/artifacts/" + sha256
+	return "/v1/artifacts/" + url.PathEscape(sha256)
 }
 
 type Client struct {
