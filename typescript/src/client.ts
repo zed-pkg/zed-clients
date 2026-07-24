@@ -76,6 +76,32 @@ export interface ClientOptions {
   registryUrl?: string;
   token?: string;
   fetchImpl?: typeof fetch;
+  /** Per-request timeout in milliseconds (default {@link DEFAULT_TIMEOUT_MS}). */
+  timeoutMs?: number;
+}
+
+/**
+ * Enforce the download-url scheme policy: https is always allowed; http only
+ * for loopback hosts or when the registry base is itself http. A malicious
+ * registry response must not redirect fetches to plaintext or unexpected hosts.
+ */
+export function allowedDownloadUrl(raw: string, base: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ZedApiError(0, "bad_download_url", `bad download url ${raw}`);
+  }
+  const host = url.hostname;
+  const loopback =
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  if (url.protocol === "https:") return raw;
+  if (url.protocol === "http:" && (loopback || base.startsWith("http://"))) return raw;
+  throw new ZedApiError(
+    0,
+    "insecure_download_url",
+    `refusing artifact download over ${url.protocol} from ${raw} (https required for non-local registries)`,
+  );
 }
 
 export function packagePath(org: string, name: string): string {
