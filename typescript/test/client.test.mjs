@@ -36,6 +36,30 @@ test("errors carry the registry code", async () => {
   );
 });
 
+test("error code falls back to http_<status> when the JSON body lacks one", async () => {
+  const fakeFetch = async () =>
+    new Response(JSON.stringify({ message: "boom" }), { status: 500 });
+  const client = new ZedClient({ registryUrl: "https://x.test", fetchImpl: fakeFetch });
+  await assert.rejects(
+    () => client.search("x"),
+    (err) =>
+      err instanceof ZedApiError &&
+      err.code === "http_500" &&
+      err.status === 500 &&
+      err.message.includes("boom"),
+  );
+});
+
+test("non-JSON error bodies keep code unknown and the raw text", async () => {
+  const fakeFetch = async () => new Response("bad gateway", { status: 502 });
+  const client = new ZedClient({ registryUrl: "https://x.test", fetchImpl: fakeFetch });
+  await assert.rejects(
+    () => client.search("x"),
+    (err) =>
+      err instanceof ZedApiError && err.code === "unknown" && err.message.includes("bad gateway"),
+  );
+});
+
 test("bearer token is attached", async () => {
   let seen;
   const fakeFetch = async (url, init) => {
