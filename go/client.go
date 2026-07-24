@@ -37,13 +37,14 @@ type PackageSummary struct {
 }
 
 type PackageMetadata struct {
-	Org         string   `json:"org"`
-	Name        string   `json:"name"`
-	Description *string  `json:"description,omitempty"`
-	Vcs         string   `json:"vcs"`
-	RepoURL     string   `json:"repo_url"`
-	Latest      *string  `json:"latest,omitempty"`
-	Versions    []string `json:"versions"`
+	Org           string   `json:"org"`
+	Name          string   `json:"name"`
+	Description   *string  `json:"description,omitempty"`
+	Vcs           string   `json:"vcs"`
+	RepoURL       string   `json:"repo_url"`
+	Latest        *string  `json:"latest,omitempty"`
+	Versions      []string `json:"versions"`
+	VersionScheme string   `json:"version_scheme,omitempty"`
 }
 
 type VersionMetadata struct {
