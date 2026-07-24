@@ -178,7 +178,14 @@ func (c *Client) DownloadArtifact(v *VersionMetadata, destPath string) error {
 	if !strings.HasPrefix(target, "http") {
 		target = c.Base + ArtifactPath(v.Sha256)
 	}
-	resp, err := c.HTTP.Get(target)
+	req, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		return err
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
@@ -186,6 +193,9 @@ func (c *Client) DownloadArtifact(v *VersionMetadata, destPath string) error {
 	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return newAPIError(resp.StatusCode, payload)
 	}
 	sum := sha256.Sum256(payload)
 	if actual := hex.EncodeToString(sum[:]); actual != v.Sha256 {
