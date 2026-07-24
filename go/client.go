@@ -231,7 +231,9 @@ func (c *Client) ClaimOrg(slug string) (*ClaimOrgResponse, error) {
 // DownloadArtifact fetches and sha256-verifies an artifact to destPath.
 func (c *Client) DownloadArtifact(v *VersionMetadata, destPath string) error {
 	target := v.DownloadURL
-	if strings.HasPrefix(target, "http") {
+	// An absolute url (any scheme) must clear the scheme/host policy; a bare
+	// path is resolved against the trusted registry base.
+	if strings.Contains(target, "://") {
 		validated, err := c.allowedDownloadURL(target)
 		if err != nil {
 			return err
