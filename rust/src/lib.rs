@@ -26,6 +26,24 @@ fn encode_segment(segment: &str) -> String {
     utf8_percent_encode(segment, SEGMENT).to_string()
 }
 
+/// Bounds every request (connect + read).
+const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Hard ceiling on artifact downloads, matching the server's
+/// `MAX_ARTIFACT_BYTES` default (100 MiB); plus the slack added to a version's
+/// declared size.
+const MAX_ARTIFACT_BYTES: u64 = 100 * 1024 * 1024;
+const DOWNLOAD_SLACK: u64 = 1024 * 1024;
+
+/// The declared size (when sane) plus slack, capped by the ceiling.
+fn download_limit(size: u64) -> u64 {
+    if size > 0 {
+        size.saturating_add(DOWNLOAD_SLACK).min(MAX_ARTIFACT_BYTES)
+    } else {
+        MAX_ARTIFACT_BYTES
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The registry answered with a structured error body.
