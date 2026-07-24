@@ -162,9 +162,9 @@ impl Client {
         let request = self
             .http
             .put(self.url(&registry::version_path(
-                &package.org,
-                &package.name,
-                &package.version,
+                &encode_segment(&package.org),
+                &encode_segment(&package.name),
+                &encode_segment(&package.version),
             )))
             .multipart(form);
         let response = self.bearer(request).send()?;
