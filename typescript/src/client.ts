@@ -27,19 +27,20 @@ export interface ClientOptions {
 }
 
 export function packagePath(org: string, name: string): string {
-  return `/v1/packages/${org}/${name}`;
+  return `/v1/packages/${encodeURIComponent(org)}/${encodeURIComponent(name)}`;
 }
 
 export function versionPath(org: string, name: string, version: string): string {
-  return `/v1/packages/${org}/${name}/versions/${version}`;
+  return `/v1/packages/${encodeURIComponent(org)}/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`;
 }
 
 export function artifactPath(sha256: string): string {
-  return `/v1/artifacts/${sha256}`;
+  return `/v1/artifacts/${encodeURIComponent(sha256)}`;
 }
 
 export function filePath(org: string, name: string, version: string, path: string): string {
-  return `/v1/files/${org}/${name}/${version}/${path}`;
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  return `/v1/files/${encodeURIComponent(org)}/${encodeURIComponent(name)}/${encodeURIComponent(version)}/${encodedPath}`;
 }
 
 export class ZedClient {
