@@ -5,11 +5,26 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use sha2::{Digest, Sha256};
 use zed_interfaces::registry::{
     self, ApiError, ClaimOrgRequest, ClaimOrgResponse, PackageMetadata, PublishMeta,
     PublishResponse, SearchResponse, VersionMetadata,
 };
+
+/// Path-segment encoding: keep RFC 3986 unreserved characters, escape
+/// everything else (including `/`). Org and name are slugs today, but opaque
+/// version tags can contain arbitrary characters that must not break out of
+/// their URL segment.
+const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+fn encode_segment(segment: &str) -> String {
+    utf8_percent_encode(segment, SEGMENT).to_string()
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
