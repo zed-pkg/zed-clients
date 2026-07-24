@@ -152,16 +152,52 @@ impl Client {
         Ok(Self::check(response)?.json()?)
     }
 
+    /// Enforce the download-url scheme policy: https is always allowed; http
+    /// only for loopback hosts or when the registry base is itself http. A
+    /// malicious registry response must not redirect fetches to plaintext or
+    /// unexpected hosts.
+    fn allowed_download_url(&self, raw: &str) -> Result<reqwest::Url> {
+        let url = reqwest::Url::parse(raw)
+            .map_err(|e| Error::Other(format!("bad download url {raw}: {e}")))?;
+        let loopback = matches!(url.host_str(), Some("localhost"))
+            || url
+                .host_str()
+                .and_then(|h| h.parse::<std::net::IpAddr>().ok())
+                .is_some_and(|ip| ip.is_loopback());
+        match url.scheme() {
+            "https" => Ok(url),
+            "http" if loopback || self.base.starts_with("http://") => Ok(url),
+            other => Err(Error::Other(format!(
+                "refusing artifact download over `{other}` from {raw} \
+                 (https required for non-local registries)"
+            ))),
+        }
+    }
+
     /// Download an artifact to `dest` and verify its sha256.
     pub fn download_artifact(&self, version: &VersionMetadata, dest: &Path) -> Result<()> {
-        let url = if version.download_url.starts_with("http") {
-            version.download_url.clone()
+        // An absolute url (any scheme) must clear the scheme/host policy; a
+        // bare path is resolved against the trusted registry base. No bearer
+        // token is attached: download_url may point at a third-party host
+        // (e.g. a presigned S3/R2 url) and the token must not leak there.
+        let url = if version.download_url.contains("://") {
+            self.allowed_download_url(&version.download_url)?
         } else {
-            self.url(&registry::artifact_path(&encode_segment(&version.sha256)))
+            reqwest::Url::parse(&self.url(&registry::artifact_path(&encode_segment(&version.sha256))))
+                .map_err(|e| Error::Other(format!("bad registry url: {e}")))?
         };
-        let mut response = Self::check(self.http.get(url).send()?)?;
+        let response = Self::check(self.http.get(url).send()?)?;
+        // Bound the read to guard against OOM; read one extra byte so an
+        // over-limit body is detected without buffering it whole.
+        let limit = download_limit(version.size);
         let mut bytes = Vec::new();
-        response.read_to_end(&mut bytes)?;
+        let mut limited = response.take(limit.saturating_add(1));
+        limited.read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > limit {
+            return Err(Error::Other(format!(
+                "artifact exceeded {limit} bytes; refusing"
+            )));
+        }
         verify_sha256(&bytes, &version.sha256)?;
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
