@@ -184,7 +184,7 @@ class ZedClient:
             headers["content-type"] = content_type
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as error:
             raise _api_error(error) from None
