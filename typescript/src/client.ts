@@ -59,9 +59,15 @@ export class ZedClient {
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
     const response = await this.fetchImpl(`${this.base}${path}`, { ...init, headers });
     if (!response.ok) {
-      let body: ApiErrorBody = { code: "unknown", message: await response.text() };
+      const text = await response.text();
+      let body: ApiErrorBody = { code: "unknown", message: text };
       try {
-        body = JSON.parse(body.message) as ApiErrorBody;
+        const parsed = JSON.parse(text) as Partial<ApiErrorBody> | null;
+        body = {
+          // JSON error bodies without a stable code still get a defined one.
+          code: typeof parsed?.code === "string" ? parsed.code : `http_${response.status}`,
+          message: typeof parsed?.message === "string" ? parsed.message : text,
+        };
       } catch {
         // non-JSON error body; keep the raw text
       }
