@@ -314,7 +314,7 @@ mod tests {
 #[cfg(test)]
 mod download_tests {
     use super::*;
-    use std::io::{Read as _, Write as _};
+    use std::io::Write as _;
     use std::net::TcpListener;
     use std::sync::mpsc;
 
