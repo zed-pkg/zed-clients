@@ -136,9 +136,30 @@ class ZedClient:
         self,
         registry_url: str = DEFAULT_REGISTRY_URL,
         token: Optional[str] = None,
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
         self.base = registry_url.rstrip("/")
         self.token = token
+        self.timeout = timeout
+
+    def _allowed_download_url(self, raw: str) -> str:
+        """Enforce the download-url scheme policy: https is always allowed; http
+        only for loopback hosts or when the registry base is itself http. A
+        malicious registry response must not redirect fetches to plaintext or
+        unexpected hosts."""
+        parsed = urllib.parse.urlparse(raw)
+        scheme = parsed.scheme
+        loopback = _is_loopback_host(parsed.hostname or "")
+        if scheme == "https":
+            return raw
+        if scheme == "http" and (loopback or self.base.startswith("http://")):
+            return raw
+        raise ZedApiError(
+            0,
+            "insecure_download_url",
+            f"refusing artifact download over {scheme!r} from {raw} "
+            "(https required for non-local registries)",
+        )
 
     def _headers(self) -> dict:
         headers = {"user-agent": USER_AGENT}
