@@ -14,6 +14,18 @@ test("url helpers match the contract", () => {
   assert.equal(filePath("acme", "kit", "1.2.0", "dist/x.css"), "/v1/files/acme/kit/1.2.0/dist/x.css");
 });
 
+test("path segments are percent-encoded", () => {
+  assert.equal(
+    versionPath("acme", "kit", "release candidate/1"),
+    "/v1/packages/acme/kit/versions/release%20candidate%2F1",
+  );
+  assert.equal(packagePath("a?b", "c#d"), "/v1/packages/a%3Fb/c%23d");
+  assert.equal(
+    filePath("acme", "kit", "v/2", "dist/a b.css"),
+    "/v1/files/acme/kit/v%2F2/dist/a%20b.css",
+  );
+});
+
 test("errors carry the registry code", async () => {
   const fakeFetch = async () =>
     new Response(JSON.stringify({ code: "org_taken", message: "nope" }), { status: 409 });
