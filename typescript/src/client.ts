@@ -189,14 +189,34 @@ export class ZedClient {
 
   /** Download an artifact and verify its sha256 (WebCrypto). */
   async downloadArtifact(version: VersionMetadata): Promise<Uint8Array> {
-    const url = version.download_url.startsWith("http")
-      ? version.download_url
+    // An absolute url (any scheme) must clear the scheme/host policy; a bare
+    // path is resolved against the trusted registry base.
+    const url = version.download_url.includes("://")
+      ? allowedDownloadUrl(version.download_url, this.base)
       : `${this.base}${artifactPath(version.sha256)}`;
-    const response = await this.fetchImpl(url);
-    if (!response.ok) {
-      throw new ZedApiError(response.status, "download_failed", await response.text());
+    const limit = downloadLimit(version.size);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let bytes: Uint8Array;
+    try {
+      // Deliberately no auth header: download_url may point at a third-party
+      // host (e.g. a presigned S3/R2 url), and the token must not leak there.
+      const response = await this.fetchImpl(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new ZedApiError(response.status, "download_failed", await response.text());
+      }
+      const declared = response.headers.get("content-length");
+      if (declared !== null && Number(declared) > limit) {
+        throw new ZedApiError(
+          0,
+          "artifact_too_large",
+          `artifact exceeded ${limit} bytes; refusing`,
+        );
+      }
+      bytes = await readCapped(response, limit);
+    } finally {
+      clearTimeout(timer);
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const actual = [...new Uint8Array(digest)]
       .map((b) => b.toString(16).padStart(2, "0"))
