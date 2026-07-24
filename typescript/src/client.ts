@@ -9,6 +9,58 @@ import type {
 
 export const DEFAULT_REGISTRY_URL = "https://registry.zpkg.tech";
 
+/** Bounds every request (connect + read), in milliseconds. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Hard ceiling on artifact downloads, matching the server's MAX_ARTIFACT_BYTES
+ * default (100 MiB); plus the slack added to a version's declared size.
+ */
+export const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024;
+const DOWNLOAD_SLACK = 1024 * 1024;
+
+/** The declared size (when sane) plus slack, capped by the ceiling. */
+function downloadLimit(size: number): number {
+  if (Number.isFinite(size) && size > 0) {
+    return Math.min(size + DOWNLOAD_SLACK, MAX_ARTIFACT_BYTES);
+  }
+  return MAX_ARTIFACT_BYTES;
+}
+
+/** Stream a response body, refusing once more than `limit` bytes arrive. */
+async function readCapped(response: Response, limit: number): Promise<Uint8Array> {
+  const tooLarge = () =>
+    new ZedApiError(0, "artifact_too_large", `artifact exceeded ${limit} bytes; refusing`);
+  const body = response.body;
+  if (!body) {
+    const buf = new Uint8Array(await response.arrayBuffer());
+    if (buf.byteLength > limit) throw tooLarge();
+    return buf;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > limit) {
+        await reader.cancel();
+        throw tooLarge();
+      }
+      chunks.push(value);
+    }
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 export class ZedApiError extends Error {
   constructor(
     public readonly status: number,
