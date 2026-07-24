@@ -10,13 +10,40 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 const DefaultRegistryURL = "https://registry.zpkg.tech"
+
+// DefaultTimeout bounds each HTTP request (connect + read).
+const DefaultTimeout = 30 * time.Second
+
+const (
+	// maxArtifactBytes is the hard ceiling on artifact downloads, matching the
+	// server's MAX_ARTIFACT_BYTES default (100 MiB).
+	maxArtifactBytes = 100 * 1024 * 1024
+	// downloadSlack is the allowance added to a version's declared size.
+	downloadSlack = 1024 * 1024
+)
+
+// downloadLimit bounds an artifact read: the declared size (when sane) plus
+// slack, capped by the static ceiling. A zero/unknown size falls back to the
+// ceiling.
+func downloadLimit(size uint64) uint64 {
+	if size == 0 {
+		return maxArtifactBytes
+	}
+	limit := size + downloadSlack
+	if limit < size || limit > maxArtifactBytes { // overflow or over ceiling
+		return maxArtifactBytes
+	}
+	return limit
+}
 
 // APIError carries the registry's stable error code.
 type APIError struct {
