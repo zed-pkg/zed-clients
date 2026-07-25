@@ -6,10 +6,11 @@ use std::io::Read;
 use std::path::Path;
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use zed_interfaces::registry::{
     self, ApiError, ClaimOrgRequest, ClaimOrgResponse, PackageMetadata, PublishMeta,
-    PublishResponse, SearchResponse, VersionMetadata,
+    PublishResponse, SearchResponse, VersionMetadata, YankRequest, YankResponse,
 };
 
 /// Path-segment encoding: keep RFC 3986 unreserved characters, escape
