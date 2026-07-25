@@ -36,6 +36,13 @@ const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 const MAX_ARTIFACT_BYTES: u64 = 100 * 1024 * 1024;
 const DOWNLOAD_SLACK: u64 = 1024 * 1024;
 
+/// Default ceiling on a JSON response body (16 MiB). Metadata, search results
+/// and error bodies are all small; without a cap a hostile or compromised
+/// registry can exhaust client memory by streaming an unbounded body at
+/// `get_package` / `get_version` / `search`. Override per client with
+/// [`Client::with_max_response_bytes`].
+pub const DEFAULT_MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
+
 /// The declared size (when sane) plus slack, capped by the ceiling.
 fn download_limit(size: u64) -> u64 {
     if size > 0 {
