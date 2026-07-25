@@ -184,7 +184,7 @@ impl Client {
     pub fn get_package(&self, org: &str, name: &str) -> Result<PackageMetadata> {
         let path = registry::package_path(&encode_segment(org), &encode_segment(name));
         let response = self.http.get(self.url(&path)).send()?;
-        Ok(Self::check(response)?.json()?)
+        self.json(response)
     }
 
     pub fn get_version(&self, org: &str, name: &str, version: &str) -> Result<VersionMetadata> {
@@ -194,7 +194,7 @@ impl Client {
             &encode_segment(version),
         );
         let response = self.http.get(self.url(&path)).send()?;
-        Ok(Self::check(response)?.json()?)
+        self.json(response)
     }
 
     pub fn search(&self, query: &str) -> Result<SearchResponse> {
@@ -203,7 +203,7 @@ impl Client {
             .get(self.url(&registry::search_path()))
             .query(&[("q", query)])
             .send()?;
-        Ok(Self::check(response)?.json()?)
+        self.json(response)
     }
 
     pub fn claim_org(&self, slug: &str) -> Result<ClaimOrgResponse> {
@@ -211,7 +211,30 @@ impl Client {
             slug: slug.to_string(),
         });
         let response = self.bearer(request).send()?;
-        Ok(Self::check(response)?.json()?)
+        self.json(response)
+    }
+
+    /// Yank a published version (`yanked: true`) or restore one (`false`).
+    /// Yanked versions stay downloadable for existing lockfiles but are hidden
+    /// from fresh resolution and search — the way a compromised release is
+    /// pulled. Requires a bearer token with publish rights on the org.
+    pub fn yank(
+        &self,
+        org: &str,
+        name: &str,
+        version: &str,
+        yanked: bool,
+    ) -> Result<YankResponse> {
+        let request = self
+            .http
+            .post(self.url(&registry::yank_path(
+                &encode_segment(org),
+                &encode_segment(name),
+                &encode_segment(version),
+            )))
+            .json(&YankRequest { yanked });
+        let response = self.bearer(request).send()?;
+        self.json(response)
     }
 
     /// Enforce the download-url scheme policy: https is always allowed; http
