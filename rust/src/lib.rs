@@ -76,6 +76,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Client {
     base: String,
     token: Option<String>,
+    max_response_bytes: u64,
     http: reqwest::blocking::Client,
 }
 
@@ -84,6 +85,7 @@ impl Client {
         Ok(Self {
             base: base_url.into().trim_end_matches('/').to_string(),
             token: None,
+            max_response_bytes: DEFAULT_MAX_RESPONSE_BYTES,
             http: reqwest::blocking::Client::builder()
                 .user_agent(concat!("zed-client-rust/", env!("CARGO_PKG_VERSION")))
                 .timeout(DEFAULT_TIMEOUT)
@@ -96,16 +98,59 @@ impl Client {
         self
     }
 
+    /// Override the ceiling on JSON response bodies (default
+    /// [`DEFAULT_MAX_RESPONSE_BYTES`]). Artifact downloads keep their own,
+    /// larger cap derived from the version's declared size.
+    pub fn with_max_response_bytes(mut self, limit: u64) -> Self {
+        self.max_response_bytes = limit;
+        self
+    }
+
     fn url(&self, path: &str) -> String {
         format!("{}{path}", self.base)
     }
 
-    fn check(response: reqwest::blocking::Response) -> Result<reqwest::blocking::Response> {
+    /// Read at most `limit` bytes of a response body. One extra byte is read so
+    /// an over-limit body is detected without buffering the whole thing, and a
+    /// declared `Content-Length` past the limit is refused before any read.
+    fn read_capped(
+        response: reqwest::blocking::Response,
+        limit: u64,
+        what: &str,
+    ) -> Result<Vec<u8>> {
+        let too_large = || Error::Other(format!("{what} exceeded {limit} bytes; refusing"));
+        if response.content_length().is_some_and(|len| len > limit) {
+            return Err(too_large());
+        }
+        let mut bytes = Vec::new();
+        response
+            .take(limit.saturating_add(1))
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > limit {
+            return Err(too_large());
+        }
+        Ok(bytes)
+    }
+
+    fn check(&self, response: reqwest::blocking::Response) -> Result<reqwest::blocking::Response> {
         if response.status().is_success() {
             return Ok(response);
         }
         let status = response.status().as_u16();
-        let body = response.text().unwrap_or_default();
+        // The error body is attacker-controlled like any other, so it is read
+        // under the same cap; a body that blows the cap still surfaces its
+        // status rather than being read into memory.
+        let body = match Self::read_capped(response, self.max_response_bytes, "registry error body")
+        {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(err) => {
+                return Err(Error::Api {
+                    status,
+                    code: "unknown".into(),
+                    message: format!("<error body unavailable: {err}>"),
+                });
+            }
+        };
         match serde_json::from_str::<ApiError>(&body) {
             Ok(err) => Err(Error::Api {
                 status,
@@ -118,6 +163,15 @@ impl Client {
                 message: body,
             }),
         }
+    }
+
+    /// Check the status, then decode the body under the response cap. Replaces
+    /// `reqwest`'s `json()`, which buffers an unbounded body.
+    fn json<T: DeserializeOwned>(&self, response: reqwest::blocking::Response) -> Result<T> {
+        let response = self.check(response)?;
+        let bytes = Self::read_capped(response, self.max_response_bytes, "registry response")?;
+        serde_json::from_slice(&bytes)
+            .map_err(|e| Error::Other(format!("invalid registry response: {e}")))
     }
 
     fn bearer(&self, request: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
