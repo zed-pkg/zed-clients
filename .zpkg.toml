@@ -14,17 +14,29 @@ url = "https://github.com/zed-pkg/zed-clients"
 include_readme = true
 tag_format = "v{version}"
 
+
+# One target per language subtree. `zed publish` fans this out to one
+# independently installable package each, named `<package.name>-<target>`, so a
+# consumer downloads only the language it can build against -- and the ecosystem
+# recorded in every artifact stops it installing anywhere else.
+#
+# Target keys are the colloquial language names so published package names read
+# the way people search for them; project inference matches them through
+# language synonyms (a `package.json` project resolves `nodejs`, `go.mod`
+# resolves `golang`).
+
 [targets.nodejs]
 dir = "typescript"
-name = "zed-clients-nodejs"
 adapter = "node"
 
 [targets.python]
 dir = "python"
+adapter = "python"
 
 [targets.golang]
 dir = "go"
-name = "zed-clients-golang"
+adapter = "go"
 
 [targets.rust]
 dir = "rust"
+adapter = "rust"
