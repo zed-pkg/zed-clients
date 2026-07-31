@@ -57,9 +57,14 @@ test("registry base URLs are validated and gateway prefixes are preserved", () =
 });
 
 test("errors carry a stable code without exposing bounded remote text by default", async () => {
-  const remote = "provider-secret".repeat(MAX_ERROR_BODY_BYTES);
-  const fakeFetch = async () =>
-    new Response(JSON.stringify({ code: "org_taken", message: remote }), { status: 409 });
+  // Keep the complete JSON envelope within the client's error-body budget so
+  // this assertion tests stable-code preservation rather than an impossible
+  // parse of deliberately truncated JSON. Oversized non-JSON bodies are tested
+  // separately through the status-code fallback contract.
+  const remote = "provider-secret".repeat(1_000);
+  const payload = JSON.stringify({ code: "org_taken", message: remote });
+  assert.ok(new TextEncoder().encode(payload).byteLength <= MAX_ERROR_BODY_BYTES);
+  const fakeFetch = async () => new Response(payload, { status: 409 });
   const client = new ZedClient({ registryUrl: "https://x.test///", fetchImpl: fakeFetch });
   await assert.rejects(
     () => client.claimOrg("acme"),
