@@ -197,8 +197,12 @@ func TestDownloadArtifactStatusPolicyAndCaps(t *testing.T) {
 		t.Fatal("default error leaked remote message")
 	}
 
+	// An explicitly insecure registry may use ordinary HTTP for its own artifact
+	// URLs. Verify rejection from the production HTTPS trust boundary instead of
+	// accidentally asking the network to resolve an intentionally bogus host.
+	secureClient := newTestClient(t, "https://registry.zpkg.tech")
 	for _, target := range []string{"http://evil.example/artifact", "file:///etc/passwd"} {
-		err := client.DownloadArtifact(
+		err := secureClient.DownloadArtifact(
 			&VersionMetadata{Sha256: "abc", DownloadURL: target},
 			filepath.Join(t.TempDir(), "a"),
 		)
