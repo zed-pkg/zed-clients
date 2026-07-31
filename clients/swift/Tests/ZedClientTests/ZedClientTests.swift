@@ -63,12 +63,16 @@ final class ZedClientTests: XCTestCase {
             token: "publisher-token"
         )
         let metadata = try await client.getPackage(org: "acme", name: "http kit")
+        let claim = try await client.claimOrg(slug: "acme")
+        let yank = try await client.yank(
+            org: "acme",
+            name: "http-kit",
+            version: "1.0.0"
+        )
         XCTAssertEqual(metadata.org, "acme")
         XCTAssertEqual(metadata.versions, ["1.0.0"])
-        XCTAssertTrue(try await client.claimOrg(slug: "acme").created)
-        XCTAssertTrue(
-            try await client.yank(org: "acme", name: "http-kit", version: "1.0.0").yanked
-        )
+        XCTAssertTrue(claim.created)
+        XCTAssertTrue(yank.yanked)
 
         let requests = recorder.snapshot()
         XCTAssertEqual(requests.count, 3)
@@ -126,7 +130,8 @@ final class ZedClientTests: XCTestCase {
             publishedAt: "2026-07-31T00:00:00Z",
             yanked: false
         )
-        XCTAssertEqual(try await client.downloadArtifact(version), artifact)
+        let downloaded = try await client.downloadArtifact(version)
+        XCTAssertEqual(downloaded, artifact)
         let request = try XCTUnwrap(recorder.snapshot().first)
         XCTAssertNil(
             request.value(forHTTPHeaderField: "Authorization"),
@@ -227,7 +232,7 @@ final class ZedClientTests: XCTestCase {
         )
         let body = try bodyData(request)
         XCTAssertNotNil(body.range(of: artifact), "multipart body altered raw archive bytes")
-        let readable = String(decoding: body, as: Unicode.ISOLatin1.self)
+        let readable = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(readable.contains("name=\"meta\""))
         XCTAssertTrue(readable.contains("name=\"artifact\""))
         XCTAssertTrue(readable.contains("\"commit\":\"deadbeef\""))
@@ -351,7 +356,13 @@ private func bodyData(_ request: URLRequest) throws -> Data {
     var output = Data()
     var buffer = [UInt8](repeating: 0, count: 8192)
     while stream.hasBytesAvailable {
-        let count = stream.read(&buffer, maxLength: buffer.count)
+        let capacity = buffer.count
+        let count = buffer.withUnsafeMutableBytes { bytes -> Int in
+            guard let baseAddress = bytes.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                return 0
+            }
+            return stream.read(baseAddress, maxLength: capacity)
+        }
         if count < 0 {
             throw stream.streamError ?? URLError(.cannotDecodeContentData)
         }
