@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use zed_interfaces::registry::{
@@ -133,7 +133,10 @@ impl Client {
         what: &str,
     ) -> Result<Vec<u8>> {
         let too_large = || Error::Other(format!("{what} exceeded {limit} bytes; refusing"));
-        if response.content_length().is_some_and(|length| length > limit) {
+        if response
+            .content_length()
+            .is_some_and(|length| length > limit)
+        {
             return Err(too_large());
         }
         let mut bytes = Vec::new();
@@ -275,8 +278,8 @@ impl Client {
         if let Ok(absolute) = reqwest::Url::parse(trimmed) {
             return self.allowed_download_url(absolute.as_str());
         }
-        let base = reqwest::Url::parse(&(self.base.clone() + "/"))
-            .map_err(|_| Error::InvalidBaseUrl)?;
+        let base =
+            reqwest::Url::parse(&(self.base.clone() + "/")).map_err(|_| Error::InvalidBaseUrl)?;
         let resolved = base
             .join(trimmed)
             .map_err(|_| Error::Other("relative download URL is invalid".to_string()))?;
@@ -404,9 +407,11 @@ mod tests {
         for raw in ["http://evil.example/artifact", "file:///etc/passwd"] {
             assert!(client.allowed_download_url(raw).is_err(), "accepted {raw}");
         }
-        assert!(client
-            .allowed_download_url("http://127.0.0.1:8080/a")
-            .is_ok());
+        assert!(
+            client
+                .allowed_download_url("http://127.0.0.1:8080/a")
+                .is_ok()
+        );
         assert!(client.allowed_download_url("https://cdn.example/a").is_ok());
     }
 }
@@ -482,7 +487,10 @@ mod download_tests {
         let metadata = version("artifact", &sha, body.len() as u64);
         client.download_artifact(&metadata, &destination).unwrap();
         let request = receiver.recv().unwrap();
-        assert!(request.starts_with("GET /gateway/artifact "), "request={request}");
+        assert!(
+            request.starts_with("GET /gateway/artifact "),
+            "request={request}"
+        );
         assert!(!request.to_lowercase().contains("authorization"));
         assert_eq!(std::fs::read(&destination).unwrap(), body);
         let _ = std::fs::remove_dir_all(&directory);
@@ -497,7 +505,9 @@ mod download_tests {
         let directory = std::env::temp_dir().join(format!("zed-dl-big-{}", std::process::id()));
         let destination = directory.join("artifact.tar.gz");
         let metadata = version(&format!("{base}/artifact"), "deadbeef", 1);
-        let error = client.download_artifact(&metadata, &destination).unwrap_err();
+        let error = client
+            .download_artifact(&metadata, &destination)
+            .unwrap_err();
         assert!(matches!(&error, Error::Other(message) if message.contains("exceeded")));
         let _ = std::fs::remove_dir_all(&directory);
     }
