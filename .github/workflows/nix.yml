@@ -36,23 +36,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  agent-check:
+  remaining-runtime:
+    name: pinned ${{ matrix.stage }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [erlang, java, swift]
     steps:
       - name: Check out zed-clients
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           path: zed-clients
-          persist-credentials: false
-          show-progress: false
-
-      - name: Check out the pinned interface contract
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: zed-pkg/zed-interfaces
-          ref: f8852622c9b98308e6851342f0ce152c4253b377
-          path: zed-interfaces
           persist-credentials: false
           show-progress: false
 
@@ -62,6 +58,6 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Run the complete pinned agent check
+      - name: Run pinned runtime stage
         working-directory: zed-clients
-        run: nix develop --no-update-lock-file -c agent-check
+        run: nix develop --no-update-lock-file -c agent-check "${{ matrix.stage }}"
