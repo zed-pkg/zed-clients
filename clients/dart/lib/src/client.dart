@@ -159,7 +159,8 @@ final class ZedClient {
 
   /// `GET /v1/packages/{org}/{name}` — package metadata + version list.
   Future<PackageMetadata> getPackage(String org, String name) async =>
-      PackageMetadata.fromJson(await _requestJson('GET', packagePath(org, name)));
+      PackageMetadata.fromJson(
+          await _requestJson('GET', packagePath(org, name)));
 
   /// `GET /v1/packages/{org}/{name}/versions/{version}`.
   Future<VersionMetadata> getVersion(
@@ -168,8 +169,9 @@ final class ZedClient {
           await _requestJson('GET', versionPath(org, name, version)));
 
   /// `GET /v1/search?q=`.
-  Future<SearchResponse> search(String query) async => SearchResponse.fromJson(
-      await _requestJson('GET', '/v1/search?q=${Uri.encodeQueryComponent(query)}'));
+  Future<SearchResponse> search(String query) async =>
+      SearchResponse.fromJson(await _requestJson(
+          'GET', '/v1/search?q=${Uri.encodeQueryComponent(query)}'));
 
   /// `POST /v1/orgs` (bearer token).
   Future<ClaimOrgResponse> claimOrg(String slug) async =>
@@ -232,7 +234,8 @@ final class ZedClient {
   Future<PublishResponse> publish(
       Map<String, dynamic> meta, List<int> artifact) async {
     final manifest = meta['manifest'];
-    final package = manifest is Map<String, dynamic> ? manifest['package'] : null;
+    final package =
+        manifest is Map<String, dynamic> ? manifest['package'] : null;
     if (package is! Map<String, dynamic>) {
       throw ZedApiError(
           0, 'invalid_publish_meta', 'meta.manifest.package is required');
@@ -240,15 +243,15 @@ final class ZedClient {
     final org = package['org'] as String;
     final name = package['name'] as String;
     final version = package['version'] as String;
-    final request =
-        http.MultipartRequest('PUT', Uri.parse('$base${versionPath(org, name, version)}'))
-          ..headers.addAll(_headers(authorized: true))
-          ..fields['meta'] = jsonEncode(meta)
-          ..files.add(http.MultipartFile.fromBytes(
-            'artifact',
-            artifact,
-            filename: '$org-$name-$version.tar.gz',
-          ));
+    final request = http.MultipartRequest(
+        'PUT', Uri.parse('$base${versionPath(org, name, version)}'))
+      ..headers.addAll(_headers(authorized: true))
+      ..fields['meta'] = jsonEncode(meta)
+      ..files.add(http.MultipartFile.fromBytes(
+        'artifact',
+        artifact,
+        filename: '$org-$name-$version.tar.gz',
+      ));
     final streamed = await _http.send(request).timeout(_timeout);
     final response = await http.Response.fromStream(streamed).timeout(_timeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
