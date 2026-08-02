@@ -88,7 +88,10 @@ fn global_fetch(request: &Request) -> Result<js_sys::Promise, JsValue> {
     let fetch: js_sys::Function = fetch
         .dyn_into()
         .map_err(|_| js_error("global fetch is unavailable in this runtime"))?;
-    fetch.call1(&global, request)?.dyn_into().map_err(JsValue::from)
+    fetch
+        .call1(&global, request)?
+        .dyn_into()
+        .map_err(JsValue::from)
 }
 
 #[wasm_bindgen]
@@ -270,13 +273,17 @@ impl ZedClient {
         let limit = download_limit(version.size);
         if let Ok(Some(declared)) = response.headers().get("content-length") {
             if declared.parse::<u64>().is_ok_and(|len| len > limit) {
-                return Err(js_error(format!("artifact exceeded {limit} bytes; refusing")));
+                return Err(js_error(format!(
+                    "artifact exceeded {limit} bytes; refusing"
+                )));
             }
         }
         let buffer = JsFuture::from(response.array_buffer()?).await?;
         let bytes = Uint8Array::new(&buffer).to_vec();
         if bytes.len() as u64 > limit {
-            return Err(js_error(format!("artifact exceeded {limit} bytes; refusing")));
+            return Err(js_error(format!(
+                "artifact exceeded {limit} bytes; refusing"
+            )));
         }
         verify_sha256(&bytes, &version.sha256).map_err(js_error)?;
         Ok(Uint8Array::from(bytes.as_slice()))
@@ -284,7 +291,11 @@ impl ZedClient {
 
     /// Publish: multipart `meta` (PublishMeta JSON string) + `artifact` bytes.
     /// Requires a bearer token.
-    pub async fn publish(&self, meta_json: String, artifact: Uint8Array) -> Result<JsValue, JsValue> {
+    pub async fn publish(
+        &self,
+        meta_json: String,
+        artifact: Uint8Array,
+    ) -> Result<JsValue, JsValue> {
         // Parse locally so the org/name/version segments come from the meta
         // itself, exactly as the native SDKs do.
         let meta: zed_interfaces::registry::PublishMeta = serde_json::from_str(&meta_json)
@@ -295,7 +306,10 @@ impl ZedClient {
             &encode_segment(&package.name),
             &encode_segment(&package.version),
         );
-        let filename = format!("{}-{}-{}.tar.gz", package.org, package.name, package.version);
+        let filename = format!(
+            "{}-{}-{}.tar.gz",
+            package.org, package.name, package.version
+        );
 
         let parts = Array::new();
         parts.push(&Uint8Array::from(artifact.to_vec().as_slice()));
@@ -357,7 +371,10 @@ mod tests {
         let base = "https://registry.zpkg.tech";
         for raw in ["http://evil.example/artifact", "file:///etc/passwd"] {
             let err = allowed_download_url(raw, base).unwrap_err();
-            assert!(err.contains("refusing"), "expected refusal for {raw}: {err}");
+            assert!(
+                err.contains("refusing"),
+                "expected refusal for {raw}: {err}"
+            );
         }
     }
 
@@ -370,6 +387,8 @@ mod tests {
         assert!(allowed_download_url("https://cdn.example/a", base).is_ok());
         assert!(allowed_download_url("http://10.0.0.1/a", base).is_err());
         // An http registry base opts in to plaintext downloads.
-        assert!(allowed_download_url("http://mirror.internal/a", "http://registry.internal").is_ok());
+        assert!(
+            allowed_download_url("http://mirror.internal/a", "http://registry.internal").is_ok()
+        );
     }
 }
