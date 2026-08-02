@@ -22,7 +22,10 @@
           node = pkgs.lib.attrByPath [ "nodejs_22" ] pkgs.nodejs pkgs;
           python = pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs;
           erlang = pkgs.lib.attrByPath [ "beam27Packages" "erlang" ] pkgs.erlang pkgs;
-          optionalPackage = name: pkgs.lib.optional (builtins.hasAttr name pkgs) pkgs.${name};
+          swiftToolchain = [
+            pkgs.swiftPackages.swift
+            pkgs.swiftPackages.swiftpm
+          ];
         in
         (with pkgs; [
           actionlint
@@ -59,7 +62,7 @@
           wasm-pack
         ])
         ++ [ erlang ]
-        ++ optionalPackage "swift";
+        ++ swiftToolchain;
     in
     {
       formatter = forAllSystems (system: (pkgsFor system).nixfmt);
