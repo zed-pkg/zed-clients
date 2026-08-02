@@ -42,8 +42,8 @@ void main() {
   test('download limit caps at the ceiling', () {
     expect(client.downloadLimit(0), client.maxArtifactBytes);
     expect(client.downloadLimit(10), 10 + 1024 * 1024);
-    expect(client.downloadLimit(client.maxArtifactBytes),
-        client.maxArtifactBytes);
+    expect(
+        client.downloadLimit(client.maxArtifactBytes), client.maxArtifactBytes);
   });
 
   test('insecure download urls are rejected', () {
@@ -84,10 +84,11 @@ void main() {
         headers: {'content-type': 'application/json'},
       );
     });
-    final zed = ZedClient(
-        registryUrl: 'https://registry.zpkg.tech/', httpClient: mock);
+    final zed =
+        ZedClient(registryUrl: 'https://registry.zpkg.tech/', httpClient: mock);
     final pkg = await zed.getPackage('acme', 'kit');
-    expect(seen.url.toString(), 'https://registry.zpkg.tech/v1/packages/acme/kit');
+    expect(
+        seen.url.toString(), 'https://registry.zpkg.tech/v1/packages/acme/kit');
     expect(seen.headers.containsKey('authorization'), isFalse);
     expect(pkg.latest, '1.2.0');
     expect(pkg.versionScheme, 'calver');
@@ -108,8 +109,7 @@ void main() {
   });
 
   test('non-JSON error bodies map to unknown', () async {
-    final mock =
-        MockClient((request) async => http.Response('boom', 500));
+    final mock = MockClient((request) async => http.Response('boom', 500));
     final zed = ZedClient(httpClient: mock);
     try {
       await zed.getVersion('acme', 'kit', '1.2.0');
@@ -165,8 +165,8 @@ void main() {
     final zed = ZedClient(httpClient: mock);
     expect(
       () => zed.downloadArtifact(makeVersion(sha256: '00', size: 8)),
-      throwsA(isA<ZedApiError>()
-          .having((e) => e.code, 'code', 'sha256_mismatch')),
+      throwsA(
+          isA<ZedApiError>().having((e) => e.code, 'code', 'sha256_mismatch')),
     );
   });
 
