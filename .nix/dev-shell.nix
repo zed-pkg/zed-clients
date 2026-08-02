@@ -2,6 +2,7 @@
   pkgs,
   agentCheck,
   toolchain,
+  swiftCompiler,
 }:
 pkgs.mkShell {
   packages = toolchain ++ [ agentCheck ];
@@ -11,6 +12,7 @@ pkgs.mkShell {
 
   shellHook = ''
     export NIX_DEV_SHELL=zed-clients
+    export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
     export NIX_AGENT_CACHE_ROOT="''${NIX_AGENT_CACHE_ROOT:-$PWD/.cache/nix-agent}"
     export XDG_CACHE_HOME="''${XDG_CACHE_HOME:-$NIX_AGENT_CACHE_ROOT/xdg}"
     export CARGO_HOME="''${CARGO_HOME:-$NIX_AGENT_CACHE_ROOT/cargo}"
