@@ -38,12 +38,21 @@ concurrency:
 jobs:
   agent-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Check out zed-clients
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           path: zed-clients
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out the pinned interface contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: f8852622c9b98308e6851342f0ce152c4253b377
+          path: zed-interfaces
           persist-credentials: false
           show-progress: false
 
@@ -53,18 +62,6 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Format Gleam canonically
+      - name: Run the complete pinned agent check
         working-directory: zed-clients
-        run: nix develop --no-update-lock-file -c bash -lc 'cd clients/gleam && gleam format'
-
-      - name: Upload formatted Gleam source
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: formatted-gleam-source
-          path: zed-clients/clients/gleam/src/zed_pkg_client.gleam
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Prove formatting changed the branch copy
-        working-directory: zed-clients
-        run: git diff --exit-code -- clients/gleam/src/zed_pkg_client.gleam
+        run: nix develop --no-update-lock-file -c agent-check
