@@ -71,10 +71,14 @@
         system:
         let
           pkgs = pkgsFor system;
+          swiftCompiler = pkgs.swiftPackages.swift;
           agentCheck = pkgs.writeShellApplication {
             name = "agent-check";
             runtimeInputs = toolchainFor pkgs;
-            text = builtins.readFile ./.nix/agent-check.sh;
+            text = ''
+              export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
+              ${builtins.readFile ./.nix/agent-check.sh}
+            '';
           };
         in
         {
@@ -105,6 +109,7 @@
             inherit pkgs;
             agentCheck = self.packages.${system}.agentCheck;
             toolchain = toolchainFor pkgs;
+            swiftCompiler = pkgs.swiftPackages.swift;
           };
         }
       );
