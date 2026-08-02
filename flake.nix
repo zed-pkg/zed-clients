@@ -16,6 +16,14 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
       pkgsFor = system: import nixpkgs { inherit system; };
+      swiftRuntimeFor =
+        pkgs:
+        pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          pkgs.swiftPackages.Dispatch
+          pkgs.swiftPackages.Foundation
+          pkgs.swiftPackages.XCTest
+        ];
+      swiftLibraryPathFor = pkgs: pkgs.lib.makeLibraryPath (swiftRuntimeFor pkgs);
       toolchainFor =
         pkgs:
         let
@@ -72,11 +80,13 @@
         let
           pkgs = pkgsFor system;
           swiftCompiler = pkgs.swiftPackages.swift;
+          swiftLibraryPath = swiftLibraryPathFor pkgs;
           agentCheck = pkgs.writeShellApplication {
             name = "agent-check";
             runtimeInputs = toolchainFor pkgs;
             text = ''
               export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
+              export LD_LIBRARY_PATH="${swiftLibraryPath}:''${LD_LIBRARY_PATH:-}"
               ${builtins.readFile ./.nix/agent-check.sh}
             '';
           };
@@ -110,6 +120,7 @@
             agentCheck = self.packages.${system}.agentCheck;
             toolchain = toolchainFor pkgs;
             swiftCompiler = pkgs.swiftPackages.swift;
+            swiftLibraryPath = swiftLibraryPathFor pkgs;
           };
         }
       );
