@@ -37,72 +37,19 @@ jobs:
 
           production = Path('clients/swift/Sources/ZedClient/ZedClient.swift')
           source = production.read_text(encoding='utf-8')
-          source = replace_once(source, '''private struct ErrorEnvelope: Decodable {
-              let code: String?
-          }
-          ''', '''private struct ErrorEnvelope: Decodable {
-              let code: String?
-          }
-
-          typealias DataLoader = (
-              URLRequest,
-              Int,
-              Int
-          ) async throws -> (Data, HTTPURLResponse)
-          ''', 'data loader type')
-          source = replace_once(source, '''    private let token: String?
-              private let protocolClasses: [AnyClass]?
-              private let encoder = JSONEncoder()
-          ''', '''    private let token: String?
-              private let dataLoader: DataLoader?
-              private let encoder = JSONEncoder()
-          ''', 'stored loader')
-          source = replace_once(source, '''        self.token = Self.normalizeOptional(token)
-              self.protocolClasses = nil
-          ''', '''        self.token = Self.normalizeOptional(token)
-              self.dataLoader = nil
-          ''', 'public initializer')
-          source = replace_once(source, '''    init(
-              registryURL: String,
-              token: String?,
-              protocolClasses: [AnyClass]?
-          ) throws {
-              self.baseURL = try Self.validateBaseURL(registryURL)
-              self.token = Self.normalizeOptional(token)
-              self.protocolClasses = protocolClasses
-          }
-          ''', '''    init(
-              registryURL: String,
-              token: String?,
-              dataLoader: DataLoader?
-          ) throws {
-              self.baseURL = try Self.validateBaseURL(registryURL)
-              self.token = Self.normalizeOptional(token)
-              self.dataLoader = dataLoader
-          }
-          ''', 'test initializer')
-          source = replace_once(source, '''    ) async throws -> (Data, HTTPURLResponse) {
-              try await withCheckedThrowingContinuation { continuation in
-          ''', '''    ) async throws -> (Data, HTTPURLResponse) {
-              if let dataLoader {
-                  return try await dataLoader(request, successLimit, errorLimit)
-              }
-              return try await withCheckedThrowingContinuation { continuation in
-          ''', 'loader dispatch')
-          source = replace_once(source, '''            configuration.httpCookieAcceptPolicy = .never
-              configuration.protocolClasses = protocolClasses
-
-              let delegate = BoundedDataDelegate(
-          ''', '''            configuration.httpCookieAcceptPolicy = .never
-
-              let delegate = BoundedDataDelegate(
-          ''', 'URLSession production path')
+          source = replace_once(source, 'private struct ErrorEnvelope: Decodable {\n    let code: String?\n}\n', 'private struct ErrorEnvelope: Decodable {\n    let code: String?\n}\n\ntypealias DataLoader = (\n    URLRequest,\n    Int,\n    Int\n) async throws -> (Data, HTTPURLResponse)\n', 'data loader type')
+          source = replace_once(source, 'private let protocolClasses: [AnyClass]?', 'private let dataLoader: DataLoader?', 'stored loader')
+          source = replace_once(source, 'self.protocolClasses = nil', 'self.dataLoader = nil', 'public initializer')
+          source = replace_once(source, 'protocolClasses: [AnyClass]?', 'dataLoader: DataLoader?', 'test initializer parameter')
+          source = replace_once(source, 'self.protocolClasses = protocolClasses', 'self.dataLoader = dataLoader', 'test initializer assignment')
+          source = replace_once(source, '        try await withCheckedThrowingContinuation { continuation in\n', '        if let dataLoader {\n            return try await dataLoader(request, successLimit, errorLimit)\n        }\n        return try await withCheckedThrowingContinuation { continuation in\n', 'loader dispatch')
+          source = replace_once(source, '            configuration.protocolClasses = protocolClasses\n', '', 'production URLSession configuration')
           production.write_text(source, encoding='utf-8')
 
           tests = Path('clients/swift/Tests/ZedClientTests/ZedClientTests.swift')
           test_source = tests.read_text(encoding='utf-8')
           test_source = test_source.replace('StubURLProtocol.handler', 'StubTransport.handler')
-          test_source = replace_once(test_source, '            protocolClasses: [StubURLProtocol.self]\n', '            dataLoader: StubTransport.load\n', 'test initializer call')
+          test_source = replace_once(test_source, 'protocolClasses: [StubURLProtocol.self]', 'dataLoader: StubTransport.load', 'test initializer call')
           pattern = re.compile(r'private final class StubURLProtocol: URLProtocol \{.*?\n\}\n\nprivate func bodyData', re.DOTALL)
           replacement = '''private enum StubTransport {
               static var handler: ((URLRequest) throws -> StubResponse)?
