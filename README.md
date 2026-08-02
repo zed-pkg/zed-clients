@@ -49,6 +49,23 @@ Package listing, semantic search, embedding administration, and organization
 audit are newer router surfaces tracked separately so this core SDK matrix does
 not claim support it has not yet implemented.
 
+## Reproducible agent environment
+
+The repository has a pinned Nix development shell for the complete SDK matrix.
+Place `zed-interfaces` beside this repository so the Rust and WebAssembly path
+dependencies resolve, then run:
+
+```sh
+nix develop -c agent-check
+```
+
+The default command validates the root Zed release set, checks Nix and workflow
+formatting, and runs the TypeScript, Python, Go, Rust, WebAssembly, Dart, Gleam,
+Erlang, Java, and Swift suites. Focused stages such as `agent-check go` and
+`agent-check contract` are available while iterating. Toolchains and caches are
+provided or isolated by the shell; the committed `flake.lock` prevents an
+implicit Nixpkgs update during CI.
+
 ## License
 
 MIT
