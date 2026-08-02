@@ -140,8 +140,7 @@ pub fn allowed_download_url(
   base: String,
 ) -> Result(String, ClientError) {
   case uri.parse(raw) {
-    Error(_) ->
-      Error(InsecureDownloadUrl(message: "bad download url " <> raw))
+    Error(_) -> Error(InsecureDownloadUrl(message: "bad download url " <> raw))
     Ok(parsed) -> {
       let loopback = case parsed.host {
         Some("localhost") | Some("127.0.0.1") | Some("[::1]") | Some("::1") ->
@@ -157,15 +156,15 @@ pub fn allowed_download_url(
             False ->
               Error(InsecureDownloadUrl(
                 message: "refusing artifact download over `http` from "
-                  <> raw
-                  <> " (https required for non-local registries)",
+                <> raw
+                <> " (https required for non-local registries)",
               ))
           }
         _ ->
           Error(InsecureDownloadUrl(
             message: "refusing artifact download from "
-              <> raw
-              <> " (https required for non-local registries)",
+            <> raw
+            <> " (https required for non-local registries)",
           ))
       }
     }
@@ -190,7 +189,10 @@ pub fn verify_sha256(
   }
 }
 
-fn base_request(client: Client, path: String) -> Result(Request(BitArray), ClientError) {
+fn base_request(
+  client: Client,
+  path: String,
+) -> Result(Request(BitArray), ClientError) {
   case request.to(client.base <> path) {
     Ok(req) ->
       Ok(
@@ -198,7 +200,8 @@ fn base_request(client: Client, path: String) -> Result(Request(BitArray), Clien
         |> request.set_header("accept", "application/json")
         |> request.set_body(<<>>),
       )
-    Error(_) -> Error(InvalidResponse(message: "invalid url " <> client.base <> path))
+    Error(_) ->
+      Error(InvalidResponse(message: "invalid url " <> client.base <> path))
   }
 }
 
@@ -235,7 +238,11 @@ fn check(response: Response(BitArray)) -> Result(BitArray, ClientError) {
         Ok(#(code, message)) ->
           Error(ApiError(status: response.status, code:, message:))
         Error(_) ->
-          Error(ApiError(status: response.status, code: "unknown", message: text))
+          Error(ApiError(
+            status: response.status,
+            code: "unknown",
+            message: text,
+          ))
       }
     }
   }
@@ -250,7 +257,9 @@ fn decode_json(
     Ok(text) ->
       json.parse(from: text, using: decoder)
       |> result.map_error(fn(error) {
-        InvalidResponse(message: "invalid registry response: " <> string.inspect(error))
+        InvalidResponse(
+          message: "invalid registry response: " <> string.inspect(error),
+        )
       })
   }
 }
@@ -428,8 +437,7 @@ pub fn publish(
   meta_json: String,
   artifact: BitArray,
 ) -> Result(PublishResponse, ClientError) {
-  let boundary =
-    "zedpkg" <> sha256_hex(crypto.strong_random_bytes(16))
+  let boundary = "zedpkg" <> sha256_hex(crypto.strong_random_bytes(16))
   let filename = org <> "-" <> name <> "-" <> version <> ".tar.gz"
   use req <- result.try(base_request(client, version_path(org, name, version)))
   let req =
