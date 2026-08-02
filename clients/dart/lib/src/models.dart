@@ -122,7 +122,8 @@ class SearchResponse {
   factory SearchResponse.fromJson(Map<String, dynamic> json) => SearchResponse(
         query: json['query'] as String? ?? '',
         items: (json['items'] as List<dynamic>? ?? const [])
-            .map((item) => PackageSummary.fromJson(item as Map<String, dynamic>))
+            .map(
+                (item) => PackageSummary.fromJson(item as Map<String, dynamic>))
             .toList(),
       );
 
