@@ -21,7 +21,7 @@
         let
           node = pkgs.lib.attrByPath [ "nodejs_22" ] pkgs.nodejs pkgs;
           python = pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs;
-          erlang = pkgs.lib.attrByPath [ "erlang_27" ] pkgs.erlang pkgs;
+          erlang = pkgs.lib.attrByPath [ "beam27Packages" "erlang" ] pkgs.erlang pkgs;
           optionalPackage = name: pkgs.lib.optional (builtins.hasAttr name pkgs) pkgs.${name};
         in
         (with pkgs; [
@@ -45,7 +45,7 @@
           jq
           maven
           nix
-          nixfmt-rfc-style
+          nixfmt
           node
           openssl
           pkg-config
@@ -62,7 +62,7 @@
         ++ optionalPackage "swift";
     in
     {
-      formatter = forAllSystems (system: (pkgsFor system).nixfmt-rfc-style);
+      formatter = forAllSystems (system: (pkgsFor system).nixfmt);
 
       packages = forAllSystems (
         system:
