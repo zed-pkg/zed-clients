@@ -12,7 +12,7 @@ on:
       - scripts/validate-client-matrix.py
       - clients/**
       - README.md
-      - AGENTS.md
+      - agents.md
       - .github/workflows/nix.yml
   pull_request:
     paths:
@@ -24,7 +24,7 @@ on:
       - scripts/validate-client-matrix.py
       - clients/**
       - README.md
-      - AGENTS.md
+      - agents.md
       - .github/workflows/nix.yml
   workflow_dispatch:
 
