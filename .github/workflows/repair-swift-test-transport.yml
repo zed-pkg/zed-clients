@@ -36,13 +36,10 @@ jobs:
                   raise SystemExit(f'{label}: expected one match, found {count}')
               return text.replace(old, new, 1)
 
-          source = replace_once(
-              source,
-              '''private struct ErrorEnvelope: Decodable {
+          source = replace_once(source, '''private struct ErrorEnvelope: Decodable {
               let code: String?
           }
-          ''',
-              '''private struct ErrorEnvelope: Decodable {
+          ''', '''private struct ErrorEnvelope: Decodable {
               let code: String?
           }
 
@@ -51,34 +48,20 @@ jobs:
               Int,
               Int
           ) async throws -> (Data, HTTPURLResponse)
-          ''',
-              'data loader type',
-          )
-          source = replace_once(
-              source,
-              '''    private let token: String?
+          ''', 'data loader type')
+          source = replace_once(source, '''    private let token: String?
               private let protocolClasses: [AnyClass]?
               private let encoder = JSONEncoder()
-          ''',
-              '''    private let token: String?
+          ''', '''    private let token: String?
               private let dataLoader: DataLoader?
               private let encoder = JSONEncoder()
-          ''',
-              'stored loader',
-          )
-          source = replace_once(
-              source,
-              '''        self.token = Self.normalizeOptional(token)
+          ''', 'stored loader')
+          source = replace_once(source, '''        self.token = Self.normalizeOptional(token)
               self.protocolClasses = nil
-          ''',
-              '''        self.token = Self.normalizeOptional(token)
+          ''', '''        self.token = Self.normalizeOptional(token)
               self.dataLoader = nil
-          ''',
-              'public initializer',
-          )
-          source = replace_once(
-              source,
-              '''    init(
+          ''', 'public initializer')
+          source = replace_once(source, '''    init(
               registryURL: String,
               token: String?,
               protocolClasses: [AnyClass]?
@@ -87,8 +70,7 @@ jobs:
               self.token = Self.normalizeOptional(token)
               self.protocolClasses = protocolClasses
           }
-          ''',
-              '''    init(
+          ''', '''    init(
               registryURL: String,
               token: String?,
               dataLoader: DataLoader?
@@ -97,50 +79,30 @@ jobs:
               self.token = Self.normalizeOptional(token)
               self.dataLoader = dataLoader
           }
-          ''',
-              'test initializer',
-          )
-          source = replace_once(
-              source,
-              '''    ) async throws -> (Data, HTTPURLResponse) {
+          ''', 'test initializer')
+          source = replace_once(source, '''    ) async throws -> (Data, HTTPURLResponse) {
               try await withCheckedThrowingContinuation { continuation in
-          ''',
-              '''    ) async throws -> (Data, HTTPURLResponse) {
+          ''', '''    ) async throws -> (Data, HTTPURLResponse) {
               if let dataLoader {
                   return try await dataLoader(request, successLimit, errorLimit)
               }
               return try await withCheckedThrowingContinuation { continuation in
-          ''',
-              'loader dispatch',
-          )
-          source = replace_once(
-              source,
-              '''            configuration.httpCookieAcceptPolicy = .never
+          ''', 'loader dispatch')
+          source = replace_once(source, '''            configuration.httpCookieAcceptPolicy = .never
               configuration.protocolClasses = protocolClasses
 
               let delegate = BoundedDataDelegate(
-          ''',
-              '''            configuration.httpCookieAcceptPolicy = .never
+          ''', '''            configuration.httpCookieAcceptPolicy = .never
 
               let delegate = BoundedDataDelegate(
-          ''',
-              'production URLSession configuration',
-          )
+          ''', 'production URLSession configuration')
           production.write_text(source, encoding='utf-8')
 
           tests = Path('clients/swift/Tests/ZedClientTests/ZedClientTests.swift')
           test_source = tests.read_text(encoding='utf-8')
           test_source = test_source.replace('StubURLProtocol.handler', 'StubTransport.handler')
-          test_source = replace_once(
-              test_source,
-              '            protocolClasses: [StubURLProtocol.self]\n',
-              '            dataLoader: StubTransport.load\n',
-              'test client injection',
-          )
-          pattern = re.compile(
-              r'private final class StubURLProtocol: URLProtocol \{.*?\n\}\n\nprivate func bodyData',
-              re.DOTALL,
-          )
+          test_source = replace_once(test_source, '            protocolClasses: [StubURLProtocol.self]\n', '            dataLoader: StubTransport.load\n', 'test client injection')
+          pattern = re.compile(r'private final class StubURLProtocol: URLProtocol \{.*?\n\}\n\nprivate func bodyData', re.DOTALL)
           replacement = '''private enum StubTransport {
               static var handler: ((URLRequest) throws -> StubResponse)?
 
@@ -151,14 +113,12 @@ jobs:
               ) async throws -> (Data, HTTPURLResponse) {
                   let handler = try XCTUnwrap(Self.handler)
                   let stub = try handler(request)
-                  let response = try XCTUnwrap(
-                      HTTPURLResponse(
-                          url: try XCTUnwrap(request.url),
-                          statusCode: stub.status,
-                          httpVersion: "HTTP/1.1",
-                          headerFields: stub.headers
-                      )
-                  )
+                  let response = try XCTUnwrap(HTTPURLResponse(
+                      url: try XCTUnwrap(request.url),
+                      statusCode: stub.status,
+                      httpVersion: "HTTP/1.1",
+                      headerFields: stub.headers
+                  ))
                   let successful = (200..<300).contains(stub.status)
                   let limit = successful ? successLimit : errorLimit
                   let declared = stub.headers.first { key, _ in
@@ -178,7 +138,6 @@ jobs:
           tests.write_text(test_source, encoding='utf-8')
           PY
           git diff --check
-          git diff -- clients/swift/Sources/ZedClient/ZedClient.swift clients/swift/Tests/ZedClientTests/ZedClientTests.swift
 
       - name: Commit the test seam
         run: |
