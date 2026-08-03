@@ -127,7 +127,12 @@ run_stage() {
       (
         cd clients/dart
         dart pub get
-        dart format --output=none --set-exit-if-changed lib test
+        dart format lib test
+        if ! git diff --quiet -- lib test; then
+          printf 'Dart 3.11.4 formatting drift detected:\n' >&2
+          git diff --no-ext-diff -- lib test >&2
+          exit 1
+        fi
         dart analyze
         dart test
       )
