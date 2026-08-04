@@ -9,3 +9,4 @@ build/
 .dart_tool/
 clients/dart/pubspec.lock
 clients/wasm/pkg/
+.cache/nix-agent/
