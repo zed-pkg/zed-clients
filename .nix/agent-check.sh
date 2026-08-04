@@ -140,6 +140,7 @@ run_stage() {
     gleam)
       (
         cd clients/gleam
+        gleam deps download
         gleam format --check
         gleam test
       )
