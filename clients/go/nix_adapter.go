@@ -209,6 +209,7 @@ func rejectUnexpectedNulls(value any, path string) error {
 			if err := rejectUnexpectedNulls(child, path); err != nil {
 				return err
 			}
+		}
 	}
 	return nil
 }
