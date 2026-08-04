@@ -1,6 +1,11 @@
 name: repair DEN-1425 Go Nix adapter
 
 on:
+  push:
+    branches:
+      - agent/den-1425-go-nix-adapter
+    paths:
+      - .github/workflows/repair-den-1425-go-nix-adapter.yml
   pull_request:
     branches:
       - agent/den-1425-go-nix-adapter
@@ -11,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: repair-den-1425-go-nix-adapter-${{ github.event.pull_request.number }}
+  group: repair-den-1425-go-nix-adapter-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -20,7 +25,7 @@ defaults:
 
 jobs:
   repair:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
