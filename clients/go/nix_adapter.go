@@ -28,7 +28,7 @@ const (
 	NixAdapterZedToNix NixAdapterDirection = "zed-to-nix"
 	NixAdapterNixToZed NixAdapterDirection = "nix-to-zed"
 
-	NixPolicyStrictV1    NixAdapterPolicyProfile = "strict-v1"
+	NixPolicyStrictV1     NixAdapterPolicyProfile = "strict-v1"
 	NixPolicyDevelopment NixAdapterPolicyProfile = "development"
 
 	NixBuilderNetworkDisabled        NixAdapterBuilderNetwork = "disabled"
@@ -81,16 +81,16 @@ type NixStoreReference struct {
 }
 
 type NixRealizedOutput struct {
-	System                 string              `json:"system"`
-	Output                 string              `json:"output"`
-	DerivationJSONSHA256   string              `json:"derivation_json_sha256"`
-	StorePath              string              `json:"store_path"`
-	NARHash                string              `json:"nar_hash"`
-	NARSize                uint64              `json:"nar_size"`
-	References             []NixStoreReference `json:"references,omitempty"`
-	Signatures             []string            `json:"signatures,omitempty"`
-	NixVersion             string              `json:"nix_version"`
-	StoreInfoJSONVersion   uint32              `json:"store_info_json_version"`
+	System               string              `json:"system"`
+	Output               string              `json:"output"`
+	DerivationJSONSHA256 string              `json:"derivation_json_sha256"`
+	StorePath            string              `json:"store_path"`
+	NARHash              string              `json:"nar_hash"`
+	NARSize              uint64              `json:"nar_size"`
+	References           []NixStoreReference `json:"references,omitempty"`
+	Signatures           []string            `json:"signatures,omitempty"`
+	NixVersion           string              `json:"nix_version"`
+	StoreInfoJSONVersion uint32              `json:"store_info_json_version"`
 }
 
 type NixOutputOrigin struct {
@@ -101,14 +101,14 @@ type NixOutputOrigin struct {
 }
 
 type ZedToNixAdapterRecord struct {
-	Direction         NixAdapterDirection  `json:"direction"`
-	Schema            string               `json:"schema"`
-	Package           NixPackageIdentity   `json:"package"`
-	Source            ZedArtifactOrigin    `json:"source"`
-	Intent            NixExportIntent      `json:"intent"`
-	FlakeBundleSHA256 string               `json:"flake_bundle_sha256"`
-	Outputs           []NixRealizedOutput  `json:"outputs"`
-	Policy            NixPolicyEvidence    `json:"policy"`
+	Direction         NixAdapterDirection `json:"direction"`
+	Schema            string              `json:"schema"`
+	Package           NixPackageIdentity  `json:"package"`
+	Source            ZedArtifactOrigin   `json:"source"`
+	Intent            NixExportIntent     `json:"intent"`
+	FlakeBundleSHA256 string              `json:"flake_bundle_sha256"`
+	Outputs           []NixRealizedOutput `json:"outputs"`
+	Policy            NixPolicyEvidence   `json:"policy"`
 }
 
 type NixToZedAdapterRecord struct {
@@ -146,6 +146,7 @@ var (
 	sha256HexPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	sha256SRIPattern = regexp.MustCompile(`^sha256-[A-Za-z0-9+/]{43}=$`)
 	hexRevision      = regexp.MustCompile(`^[0-9A-Fa-f]{40}(?:[0-9A-Fa-f]{24})?$`)
+	nonHex           = regexp.MustCompile(`[^0-9A-Fa-f]+`)
 )
 
 func invalidNixAdapter(message string) error {
@@ -178,13 +179,13 @@ func decodeStrict(data []byte, destination any) error {
 }
 
 var nullableAdapterPaths = map[string]struct{}{
-	"package.target":                       {},
-	"source.lock_sha256":                   {},
-	"intent.attribute":                     {},
-	"outputs.references.nar_hash":          {},
-	"outputs.references.nar_size":          {},
-	"source.realized.references.nar_hash":  {},
-	"source.realized.references.nar_size":  {},
+	"package.target":                      {},
+	"source.lock_sha256":                  {},
+	"intent.attribute":                    {},
+	"outputs.references.nar_hash":         {},
+	"outputs.references.nar_size":         {},
+	"source.realized.references.nar_hash": {},
+	"source.realized.references.nar_size": {},
 }
 
 func rejectUnexpectedNulls(value any, path string) error {
@@ -208,7 +209,6 @@ func rejectUnexpectedNulls(value any, path string) error {
 			if err := rejectUnexpectedNulls(child, path); err != nil {
 				return err
 			}
-		}
 	}
 	return nil
 }
@@ -264,6 +264,18 @@ func ParseNixAdapterRecord(value any) (*NixAdapterRecord, error) {
 	return ParseNixAdapterRecordJSON(data)
 }
 
+func cloneJSON[T any](value T) (T, error) {
+	var clone T
+	data, err := json.Marshal(value)
+	if err != nil {
+		return clone, invalidNixAdapter("record could not be cloned")
+	}
+	if err := decodeStrict(data, &clone); err != nil {
+		return clone, err
+	}
+	return clone, nil
+}
+
 func (record *NixAdapterRecord) canonicalValue() (any, error) {
 	if record == nil {
 		return nil, invalidNixAdapter("record is nil")
@@ -273,7 +285,10 @@ func (record *NixAdapterRecord) canonicalValue() (any, error) {
 		if record.ZedToNix == nil || record.NixToZed != nil {
 			return nil, invalidNixAdapter("direction payload is inconsistent")
 		}
-		copy := *record.ZedToNix
+		copy, err := cloneJSON(*record.ZedToNix)
+		if err != nil {
+			return nil, err
+		}
 		if err := validateZedToNix(&copy); err != nil {
 			return nil, err
 		}
@@ -283,7 +298,10 @@ func (record *NixAdapterRecord) canonicalValue() (any, error) {
 		if record.NixToZed == nil || record.ZedToNix != nil {
 			return nil, invalidNixAdapter("direction payload is inconsistent")
 		}
-		copy := *record.NixToZed
+		copy, err := cloneJSON(*record.NixToZed)
+		if err != nil {
+			return nil, err
+		}
 		if err := validateNixToZed(&copy); err != nil {
 			return nil, err
 		}
@@ -355,23 +373,18 @@ func VerifyCanonicalNixAdapterRecordJSON(data []byte, expectedSHA256 string) (*V
 }
 
 func VerifyNixAdapterArtifact(record *NixAdapterRecord, artifact []byte) (*VerifiedNixAdapterArtifact, error) {
-	if record == nil {
-		return nil, invalidNixAdapter("record is nil")
+	value, err := record.canonicalValue()
+	if err != nil {
+		return nil, err
 	}
 	var expected NixInteropArtifact
-	switch record.Direction {
-	case NixAdapterZedToNix:
-		if record.ZedToNix == nil {
-			return nil, invalidNixAdapter("direction payload is inconsistent")
-		}
-		expected = record.ZedToNix.Source.Artifact
-	case NixAdapterNixToZed:
-		if record.NixToZed == nil {
-			return nil, invalidNixAdapter("direction payload is inconsistent")
-		}
-		expected = record.NixToZed.Artifact
+	switch typed := value.(type) {
+	case ZedToNixAdapterRecord:
+		expected = typed.Source.Artifact
+	case NixToZedAdapterRecord:
+		expected = typed.Artifact
 	default:
-		return nil, invalidNixAdapter("direction is unsupported")
+		return nil, invalidNixAdapter("direction payload is inconsistent")
 	}
 	digest := sha256.Sum256(artifact)
 	digestHex := hex.EncodeToString(digest[:])
@@ -671,13 +684,18 @@ func validNixSystem(value string) bool {
 }
 
 func validImmutableNixRef(value string) bool {
-	if value == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "<>\t\r\n ") {
+	if value == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, "<>") {
 		return false
+	}
+	for _, character := range value {
+		if unicode.IsSpace(character) || unicode.IsControl(character) {
+			return false
+		}
 	}
 	if strings.HasPrefix(value, "/nix/store/") || strings.HasPrefix(value, "path:/nix/store/") || strings.Contains(value, "narHash=sha256-") {
 		return true
 	}
-	for _, part := range regexp.MustCompile(`[^0-9A-Fa-f]+`).Split(value, -1) {
+	for _, part := range nonHex.Split(value, -1) {
 		if hexRevision.MatchString(part) {
 			return true
 		}
