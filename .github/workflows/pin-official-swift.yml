@@ -50,7 +50,7 @@ jobs:
             };
           }
           EOF
-          nixfmt .nix/swift-release.nix
+          nix shell nixpkgs#nixfmt -c nixfmt .nix/swift-release.nix
           cat .nix/swift-release.nix
           git diff --check
 
