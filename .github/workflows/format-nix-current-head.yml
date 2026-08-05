@@ -34,8 +34,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          nix develop --no-update-lock-file .#preflight \
-            -c nixfmt flake.nix .nix/dev-shell.nix
+          nix run --no-update-lock-file .#formatter -- \
+            flake.nix .nix/dev-shell.nix
           rm .github/workflows/format-nix-current-head.yml
           unexpected=$(git diff --name-only \
             | grep -Ev '^(flake\.nix|\.nix/dev-shell\.nix|\.github/workflows/format-nix-current-head\.yml)$' \
