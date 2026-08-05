@@ -80,6 +80,8 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
 
-      - name: Run the pinned stage
+      - name: Run the pinned runtime-focused stage
         working-directory: zed-clients
-        run: nix develop --no-update-lock-file -c agent-check "${{ matrix.stage }}"
+        run: >-
+          nix develop --no-update-lock-file ".#${{ matrix.stage }}"
+          -c agent-check "${{ matrix.stage }}"
