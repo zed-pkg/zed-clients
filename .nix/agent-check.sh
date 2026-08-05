@@ -49,17 +49,9 @@ require_interfaces_checkout() {
 }
 
 run_unlocked_cargo_tests() {
-  local had_lock=0
-  if [[ -f Cargo.lock ]]; then
-    had_lock=1
+  if [[ ! -f Cargo.lock ]]; then
+    trap 'rm -f Cargo.lock' EXIT
   fi
-  # shellcheck disable=SC2329 # invoked indirectly by the EXIT trap below
-  cleanup_generated_lock() {
-    if [[ "$had_lock" -eq 0 ]]; then
-      rm -f Cargo.lock
-    fi
-  }
-  trap cleanup_generated_lock EXIT
   cargo fmt --check
   cargo test
 }
