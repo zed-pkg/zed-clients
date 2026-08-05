@@ -24,6 +24,23 @@
           pkgs.swiftPackages.XCTest
         ];
       swiftLibraryPathFor = pkgs: pkgs.lib.makeLibraryPath (swiftRuntimeFor pkgs);
+      swiftCompilerShimFor =
+        pkgs:
+        let
+          swift = pkgs.swiftPackages.swift;
+          swiftUnwrapped = pkgs.swiftPackages.swift-unwrapped;
+        in
+        pkgs.runCommand "zed-swift-toolchain" { } ''
+          mkdir -p "$out/bin" "$out/lib"
+          cat > "$out/bin/swiftc" <<'EOF'
+          #!${pkgs.runtimeShell}
+          exec ${swift}/bin/swiftc "$@"
+          EOF
+          chmod +x "$out/bin/swiftc"
+          ln -s ${swift}/bin/swift "$out/bin/swift"
+          ln -s ${swiftUnwrapped}/lib/libIndexStore.so "$out/lib/libIndexStore.so"
+          ln -s ${swiftUnwrapped.lib}/lib/swift "$out/lib/swift"
+        '';
       toolchainFor =
         pkgs:
         let
@@ -79,7 +96,7 @@
         system:
         let
           pkgs = pkgsFor system;
-          swiftCompiler = pkgs.swiftPackages.swift;
+          swiftCompiler = swiftCompilerShimFor pkgs;
           swiftLibraryPath = swiftLibraryPathFor pkgs;
           agentCheck = pkgs.writeShellApplication {
             name = "agent-check";
@@ -120,7 +137,7 @@
             inherit pkgs swiftRuntime;
             agentCheck = self.packages.${system}.agentCheck;
             toolchain = toolchainFor pkgs;
-            swiftCompiler = pkgs.swiftPackages.swift;
+            swiftCompiler = swiftCompilerShimFor pkgs;
             swiftLibraryPath = swiftLibraryPathFor pkgs;
           };
         }
