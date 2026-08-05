@@ -75,7 +75,13 @@
                 mirror_output ${upstream.man} "$man"
 
                 ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+                  # `cp -rs` mirrors the upstream `lib` directory itself as a
+                  # read-only symlink. Replace only that directory with a
+                  # writable directory of immutable child symlinks, then add
+                  # the one path SwiftPM Linux test discovery expects.
+                  rm "$lib/lib"
                   mkdir -p "$lib/lib"
+                  cp -rs ${upstream.lib}/lib/. "$lib/lib"/
                   ln -s ${upstream}/lib/libIndexStore.so "$lib/lib/libIndexStore.so"
                 ''}
               '';
