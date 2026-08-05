@@ -57,6 +57,48 @@ Package listing, semantic search, embedding administration, and organization
 audit are newer router surfaces tracked separately so this core SDK matrix does
 not claim support it has not yet implemented.
 
+## Reproducible development environment
+
+The root Nix flake pins the contributor toolchain and exposes one
+non-interactive entrypoint for agents and humans:
+
+```bash
+nix develop --no-update-lock-file -c agent-check
+```
+
+Rust and browser-WASM checks consume `zed-interfaces` through the existing
+sibling path dependency. For local validation, check out the exact compatible
+contract beside this repository:
+
+```text
+../zed-interfaces @ 5f15f1f2686199924b3e32e7ef8e6a85434bca3e
+../zed-clients
+```
+
+Focused stages are available when iterating:
+
+```bash
+nix develop --no-update-lock-file -c agent-check contract
+nix develop --no-update-lock-file -c agent-check typescript
+nix develop --no-update-lock-file -c agent-check rust
+nix develop --no-update-lock-file -c agent-check elixir
+nix develop --no-update-lock-file -c agent-check php
+nix develop --no-update-lock-file -c agent-check swift
+```
+
+The complete check validates the locked flake, workflow syntax, shell scripts,
+the single root `.zpkg.toml` / `.zpkg.lock` release set, and all fourteen native
+SDK packages. Mutable package-manager caches are isolated under
+`.cache/nix-agent/`; they are never release inputs. The Swift stage uses the
+flake-locked Nixpkgs compiler and SwiftPM packages rather than a hand-repacked
+upstream binary.
+
+The dedicated GitHub Actions workflow uses read-only permissions, immutable
+action SHAs, the committed flake lock, and the same `agent-check` command.
+Real-browser Chromium, Firefox, and WebKit transport certification remains a
+separate exact-head workflow because browser binaries and retained evidence are
+not part of the everyday development shell.
+
 ## License
 
 MIT
