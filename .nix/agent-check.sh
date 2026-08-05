@@ -53,6 +53,7 @@ run_unlocked_cargo_tests() {
   if [[ -f Cargo.lock ]]; then
     had_lock=1
   fi
+  # shellcheck disable=SC2329 # invoked indirectly by the EXIT trap below
   cleanup_generated_lock() {
     if [[ "$had_lock" -eq 0 ]]; then
       rm -f Cargo.lock
