@@ -29,87 +29,68 @@
         "java"
         "swift"
       ];
+      swiftRelease = import ./.nix/swift-release.nix;
       forAllSystems = nixpkgs.lib.genAttrs systems;
       pkgsFor = system: import nixpkgs { inherit system; };
 
-      swiftRuntimeFor =
-        pkgs:
-        pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-          pkgs.swiftPackages.Dispatch
-          pkgs.swiftPackages.Foundation
-          pkgs.swiftPackages.XCTest
-        ];
-
-      swiftLibraryPathFor = pkgs: pkgs.lib.makeLibraryPath (swiftRuntimeFor pkgs);
-
       swiftToolchainFor =
         pkgs:
-        let
-          upstream = pkgs.swiftPackages.swift-unwrapped;
-          swiftUnwrapped =
-            pkgs.runCommand "zed-swift-unwrapped-${upstream.version}"
-              {
-                outputs = [
-                  "out"
-                  "lib"
-                  "dev"
-                  "doc"
-                  "man"
-                ];
-                inherit (upstream) version;
-                passthru = upstream.passthru or { };
-                meta = upstream.meta or { };
-              }
-              ''
-                mirror_children() {
-                  source="$1"
-                  destination="$2"
-                  mkdir -p "$destination"
-                  while IFS= read -r -d $'\0' entry; do
-                    ln -s "$entry" "$destination/$(basename "$entry")"
-                  done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
-                }
+        if pkgs.stdenv.hostPlatform.isLinux then
+          let
+            release = swiftRelease.${pkgs.system};
+            python = pkgs.lib.attrByPath [ "python310" ] pkgs.python3 pkgs;
+            swift = pkgs.stdenv.mkDerivation {
+              pname = "swift";
+              inherit (swiftRelease) version;
+              src = pkgs.fetchurl {
+                inherit (release) url hash;
+              };
 
-                mirror_children_except() {
-                  source="$1"
-                  destination="$2"
-                  excluded="$3"
-                  mkdir -p "$destination"
-                  while IFS= read -r -d $'\0' entry; do
-                    name="$(basename "$entry")"
-                    if [ "$name" = "$excluded" ]; then
-                      continue
-                    fi
-                    ln -s "$entry" "$destination/$name"
-                  done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
-                }
+              nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+              buildInputs = [
+                pkgs.ncurses
+                pkgs.zlib
+                pkgs.libgcc.lib
+                pkgs.libuuid
+                pkgs.libxml2
+                pkgs.libedit
+                pkgs.curl
+                pkgs.sqlite
+                python
+              ];
 
-                mirror_children ${upstream} "$out"
-                mirror_children_except ${upstream.lib} "$lib" lib
-                mirror_children ${upstream.dev} "$dev"
-                mirror_children ${upstream.doc} "$doc"
-                mirror_children ${upstream.man} "$man"
+              dontConfigure = true;
+              dontBuild = true;
 
-                ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-                  # Build a writable output-local directory whose children are
-                  # immutable symlinks. This avoids mutating or recursively
-                  # deleting the read-only mirrored Swift runtime tree.
-                  mkdir -p "$lib/lib"
-                  mirror_children ${upstream.lib}/lib "$lib/lib"
-                  test ! -e "$lib/lib/libIndexStore.so"
-                  ln -s ${upstream}/lib/libIndexStore.so "$lib/lib/libIndexStore.so"
-                ''}
+              installPhase = ''
+                runHook preInstall
+                mv usr "$out"
+                ln -s ${pkgs.libedit}/lib/libedit.so "$out/lib/libedit.so.2"
+                runHook postInstall
               '';
-          swift = pkgs.swiftPackages.swift.override {
-            swift = swiftUnwrapped;
-          };
-          swiftpm = pkgs.swiftPackages.swiftpm.override {
+
+              meta = {
+                description = "Official Swift ${swiftRelease.version} Linux toolchain";
+                homepage = "https://www.swift.org/";
+                license = pkgs.lib.licenses.asl20;
+                sourceProvenance = [ pkgs.lib.sourceTypes.binaryBytecode ];
+                platforms = [
+                  "x86_64-linux"
+                  "aarch64-linux"
+                ];
+                mainProgram = "swift";
+              };
+            };
+          in
+          {
             inherit swift;
+            swiftpm = swift;
+          }
+        else
+          {
+            swift = pkgs.swiftPackages.swift;
+            swiftpm = pkgs.swiftPackages.swiftpm;
           };
-        in
-        {
-          inherit swift swiftpm swiftUnwrapped;
-        };
 
       commonToolchainFor =
         pkgs: with pkgs; [
@@ -155,8 +136,7 @@
                 shfmt
                 wasm-pack
                 erlang
-                swiftPackages.swift
-                swiftPackages.swiftpm
+                swiftToolchain.swift
               ]
             else if stage == "preflight" then
               with pkgs;
@@ -214,10 +194,7 @@
                 pkgs.maven
               ]
             else if stage == "swift" then
-              [
-                swiftToolchain.swift
-                swiftToolchain.swiftpm
-              ]
+              [ swiftToolchain.swift ]
             else
               throw "unknown zed-clients agent-check stage: ${stage}";
         in
@@ -259,7 +236,6 @@
           ++ [
             erlang
             swiftToolchain.swift
-            swiftToolchain.swiftpm
           ]
         );
     in
@@ -308,9 +284,9 @@
             import ./.nix/dev-shell.nix {
               inherit pkgs agentCheck;
               toolchain = stageToolchainFor pkgs stage;
-              swiftRuntime = if isSwift then swiftRuntimeFor pkgs else [ ];
+              swiftRuntime = [ ];
               swiftCompiler = if isSwift then swiftToolchain.swift else null;
-              swiftLibraryPath = if isSwift then swiftLibraryPathFor pkgs else "";
+              swiftLibraryPath = "";
             }
           );
         in
@@ -319,9 +295,9 @@
           default = import ./.nix/dev-shell.nix {
             inherit pkgs agentCheck;
             toolchain = fullToolchainFor pkgs;
-            swiftRuntime = swiftRuntimeFor pkgs;
+            swiftRuntime = [ ];
             swiftCompiler = swiftToolchain.swift;
-            swiftLibraryPath = swiftLibraryPathFor pkgs;
+            swiftLibraryPath = "";
           };
         }
       );
