@@ -2,16 +2,21 @@
   pkgs,
   agentCheck,
   toolchain,
-  swiftCompiler,
-  swiftLibraryPath,
-  swiftRuntime,
+  swiftCompiler ? null,
+  swiftLibraryPath ? "",
+  swiftRuntime ? [ ],
 }:
+let
+  swiftEnvironment = pkgs.lib.optionalString (swiftCompiler != null) ''
+    export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
+    export LD_LIBRARY_PATH="${swiftLibraryPath}:''${LD_LIBRARY_PATH:-}"
+  '';
+in
 pkgs.mkShell {
   packages = toolchain ++ [ agentCheck ];
 
   # Swift's wrapped compiler discovers Foundation, Dispatch, and XCTest module
-  # search paths from buildInputs. Keeping them only in LD_LIBRARY_PATH makes
-  # the shared libraries visible but leaves `import XCTest` unresolved.
+  # search paths from buildInputs. Non-Swift focused shells keep this empty.
   buildInputs = swiftRuntime;
 
   LANG = if pkgs.stdenv.hostPlatform.isDarwin then "en_US.UTF-8" else "C.UTF-8";
@@ -19,8 +24,7 @@ pkgs.mkShell {
 
   shellHook = ''
     export NIX_DEV_SHELL=zed-clients
-    export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
-    export LD_LIBRARY_PATH="${swiftLibraryPath}:''${LD_LIBRARY_PATH:-}"
+    ${swiftEnvironment}
     export NIX_AGENT_CACHE_ROOT="''${NIX_AGENT_CACHE_ROOT:-$PWD/.cache/nix-agent}"
     export XDG_CACHE_HOME="''${XDG_CACHE_HOME:-$NIX_AGENT_CACHE_ROOT/xdg}"
     export CARGO_HOME="''${CARGO_HOME:-$NIX_AGENT_CACHE_ROOT/cargo}"
