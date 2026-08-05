@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          nix shell --no-update-lock-file .#formatter \
+          nix shell --no-update-lock-file .#formatter.x86_64-linux \
             -c nixfmt flake.nix .nix/dev-shell.nix
           rm .github/workflows/format-nix-current-head.yml
           unexpected=$(git diff --name-only \
