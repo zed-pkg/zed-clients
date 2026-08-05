@@ -38,7 +38,6 @@
         if pkgs.stdenv.hostPlatform.isLinux then
           let
             release = swiftRelease.${pkgs.system};
-            python = pkgs.lib.attrByPath [ "python310" ] pkgs.python3 pkgs;
             swift = pkgs.stdenv.mkDerivation {
               pname = "swift";
               inherit (swiftRelease) version;
@@ -52,12 +51,17 @@
                 pkgs.zlib
                 pkgs.libgcc.lib
                 pkgs.libuuid
-                pkgs.libxml2
+                pkgs.libxml2_13
                 pkgs.libedit
                 pkgs.curl
                 pkgs.sqlite
-                python
               ];
+
+              # The official Ubuntu archive ships LLDB's optional Python 3.10
+              # binding. The pinned Nixpkgs revision no longer exposes Python
+              # 3.10, and zed-client compilation/test discovery does not invoke
+              # LLDB. Keep ELF validation strict for every other dependency.
+              autoPatchelfIgnoreMissingDeps = [ "libpython3.10.so.1.0" ];
 
               dontConfigure = true;
               dontBuild = true;
