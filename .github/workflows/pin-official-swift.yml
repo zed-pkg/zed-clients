@@ -1,0 +1,66 @@
+name: pin official Swift 6.1.3 toolchains
+
+on:
+  push:
+    branches:
+      - alexanderdmills/den-359-zed-clients-nix-agent-shell-v4
+    paths:
+      - .github/workflows/pin-official-swift.yml
+
+permissions:
+  contents: write
+
+jobs:
+  pin:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: alexanderdmills/den-359-zed-clients-nix-agent-shell-v4
+          persist-credentials: true
+          show-progress: false
+
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Prefetch exact official release archives
+        run: |
+          set -euo pipefail
+          version=6.1.3
+          x86_url="https://download.swift.org/swift-${version}-release/ubuntu2204/swift-${version}-RELEASE/swift-${version}-RELEASE-ubuntu22.04.tar.gz"
+          arm_url="https://download.swift.org/swift-${version}-release/ubuntu2204-aarch64/swift-${version}-RELEASE/swift-${version}-RELEASE-ubuntu22.04-aarch64.tar.gz"
+          x86_hash="$(nix store prefetch-file --json "$x86_url" | jq -r .hash)"
+          arm_hash="$(nix store prefetch-file --json "$arm_url" | jq -r .hash)"
+          test -n "$x86_hash"
+          test -n "$arm_hash"
+          cat > .nix/swift-release.nix <<EOF
+          {
+            version = "${version}";
+            x86_64-linux = {
+              url = "${x86_url}";
+              hash = "${x86_hash}";
+            };
+            aarch64-linux = {
+              url = "${arm_url}";
+              hash = "${arm_hash}";
+            };
+          }
+          EOF
+          nixfmt .nix/swift-release.nix
+          cat .nix/swift-release.nix
+          git diff --check
+
+      - name: Remove prefetch workflow and commit immutable release pins
+        run: |
+          set -euo pipefail
+          rm .github/workflows/pin-official-swift.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .nix/swift-release.nix .github/workflows/pin-official-swift.yml
+          git diff --cached --check
+          git commit -m 'build: pin official Swift 6.1.3 release archives'
+          git push origin HEAD:alexanderdmills/den-359-zed-clients-nix-agent-shell-v4
