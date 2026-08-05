@@ -24,33 +24,38 @@
           pkgs.swiftPackages.XCTest
         ];
       swiftLibraryPathFor = pkgs: pkgs.lib.makeLibraryPath (swiftRuntimeFor pkgs);
-      swiftCompilerShimFor =
+      swiftToolchainFor =
         pkgs:
         let
-          swift = pkgs.swiftPackages.swift;
-          swiftUnwrapped = pkgs.swiftPackages.swift-unwrapped;
+          swiftUnwrapped = pkgs.swiftPackages.swift-unwrapped.overrideAttrs (previous: {
+            postInstall =
+              (previous.postInstall or "")
+              + pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+                # SwiftPM's Linux test discovery loads libIndexStore from the
+                # compiler's separate `lib` output. Nixpkgs installs the shared
+                # object in `out`, so expose that exact immutable file at the
+                # path SwiftPM records when built against this compiler.
+                mkdir -p "$lib/lib"
+                ln -s "$out/lib/libIndexStore.so" "$lib/lib/libIndexStore.so"
+              '';
+          });
+          swift = pkgs.swiftPackages.swift.override {
+            swift = swiftUnwrapped;
+          };
+          swiftpm = pkgs.swiftPackages.swiftpm.override {
+            inherit swift;
+          };
         in
-        pkgs.runCommand "zed-swift-toolchain" { } ''
-          mkdir -p "$out/bin" "$out/lib"
-          cat > "$out/bin/swiftc" <<'EOF'
-          #!${pkgs.runtimeShell}
-          exec ${swift}/bin/swiftc "$@"
-          EOF
-          chmod +x "$out/bin/swiftc"
-          ln -s ${swift}/bin/swift "$out/bin/swift"
-          ln -s ${swiftUnwrapped}/lib/libIndexStore.so "$out/lib/libIndexStore.so"
-          ln -s ${swiftUnwrapped.lib}/lib/swift "$out/lib/swift"
-        '';
+        {
+          inherit swift swiftpm swiftUnwrapped;
+        };
       toolchainFor =
         pkgs:
         let
           node = pkgs.lib.attrByPath [ "nodejs_22" ] pkgs.nodejs pkgs;
           python = pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs;
           erlang = pkgs.lib.attrByPath [ "beam27Packages" "erlang" ] pkgs.erlang pkgs;
-          swiftToolchain = [
-            pkgs.swiftPackages.swift
-            pkgs.swiftPackages.swiftpm
-          ];
+          swiftToolchain = swiftToolchainFor pkgs;
         in
         (with pkgs; [
           actionlint
@@ -87,7 +92,10 @@
           wasm-pack
         ])
         ++ [ erlang ]
-        ++ swiftToolchain;
+        ++ [
+          swiftToolchain.swift
+          swiftToolchain.swiftpm
+        ];
     in
     {
       formatter = forAllSystems (system: (pkgsFor system).nixfmt);
@@ -96,7 +104,8 @@
         system:
         let
           pkgs = pkgsFor system;
-          swiftCompiler = swiftCompilerShimFor pkgs;
+          swiftToolchain = swiftToolchainFor pkgs;
+          swiftCompiler = swiftToolchain.swift;
           swiftLibraryPath = swiftLibraryPathFor pkgs;
           agentCheck = pkgs.writeShellApplication {
             name = "agent-check";
@@ -130,6 +139,7 @@
         system:
         let
           pkgs = pkgsFor system;
+          swiftToolchain = swiftToolchainFor pkgs;
           swiftRuntime = swiftRuntimeFor pkgs;
         in
         {
@@ -137,7 +147,7 @@
             inherit pkgs swiftRuntime;
             agentCheck = self.packages.${system}.agentCheck;
             toolchain = toolchainFor pkgs;
-            swiftCompiler = swiftCompilerShimFor pkgs;
+            swiftCompiler = swiftToolchain.swift;
             swiftLibraryPath = swiftLibraryPathFor pkgs;
           };
         }
