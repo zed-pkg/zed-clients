@@ -46,39 +46,42 @@
         pkgs:
         let
           upstream = pkgs.swiftPackages.swift-unwrapped;
-          swiftUnwrapped = pkgs.runCommand "zed-swift-unwrapped-${upstream.version}" {
-            outputs = [
-              "out"
-              "lib"
-              "dev"
-              "doc"
-              "man"
-            ];
-            inherit (upstream) version;
-            passthru = upstream.passthru or { };
-            meta = upstream.meta or { };
-          } ''
-            mirror_output() {
-              source="$1"
-              destination="$2"
-              mkdir -p "$destination"
-              cp -rs "$source"/. "$destination"/
-            }
+          swiftUnwrapped =
+            pkgs.runCommand "zed-swift-unwrapped-${upstream.version}"
+              {
+                outputs = [
+                  "out"
+                  "lib"
+                  "dev"
+                  "doc"
+                  "man"
+                ];
+                inherit (upstream) version;
+                passthru = upstream.passthru or { };
+                meta = upstream.meta or { };
+              }
+              ''
+                mirror_output() {
+                  source="$1"
+                  destination="$2"
+                  mkdir -p "$destination"
+                  cp -rs "$source"/. "$destination"/
+                }
 
-            mirror_output ${upstream} "$out"
-            mirror_output ${upstream.lib} "$lib"
-            mirror_output ${upstream.dev} "$dev"
-            mirror_output ${upstream.doc} "$doc"
-            mirror_output ${upstream.man} "$man"
+                mirror_output ${upstream} "$out"
+                mirror_output ${upstream.lib} "$lib"
+                mirror_output ${upstream.dev} "$dev"
+                mirror_output ${upstream.doc} "$doc"
+                mirror_output ${upstream.man} "$man"
 
-            ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-              # SwiftPM records the compiler's separate `lib` output when it is
-              # built. Nixpkgs stores libIndexStore in `out`, so add only the
-              # missing immutable path without rebuilding the compiler.
-              mkdir -p "$lib/lib"
-              ln -s ${upstream}/lib/libIndexStore.so "$lib/lib/libIndexStore.so"
-            ''}
-          '';
+                ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+                  # SwiftPM records the compiler's separate `lib` output when it is
+                  # built. Nixpkgs stores libIndexStore in `out`, so add only the
+                  # missing immutable path without rebuilding the compiler.
+                  mkdir -p "$lib/lib"
+                  ln -s ${upstream}/lib/libIndexStore.so "$lib/lib/libIndexStore.so"
+                ''}
+              '';
           swift = pkgs.swiftPackages.swift.override {
             swift = swiftUnwrapped;
           };
@@ -91,9 +94,7 @@
         };
 
       commonToolchainFor =
-        pkgs:
-        with pkgs;
-        [
+        pkgs: with pkgs; [
           bash
           cacert
           coreutils
