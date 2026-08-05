@@ -113,10 +113,11 @@
         system:
         let
           pkgs = pkgsFor system;
+          swiftRuntime = swiftRuntimeFor pkgs;
         in
         {
           default = import ./.nix/dev-shell.nix {
-            inherit pkgs;
+            inherit pkgs swiftRuntime;
             agentCheck = self.packages.${system}.agentCheck;
             toolchain = toolchainFor pkgs;
             swiftCompiler = pkgs.swiftPackages.swift;
