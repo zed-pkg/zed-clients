@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: alexanderdmills/den-359-zed-clients-nix-agent-shell-v5
+          path: zed-clients
           persist-credentials: true
           show-progress: false
           fetch-depth: 0
@@ -26,7 +27,7 @@ jobs:
         with:
           repository: zed-pkg/zed-interfaces
           ref: 6e893ad0f28ccfbb7722f007d75e88548f1bcfdf
-          path: ../zed-interfaces
+          path: zed-interfaces
           persist-credentials: false
           show-progress: false
       - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
@@ -34,6 +35,7 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
       - name: Lock and format both immutable Nixpkgs inputs
+        working-directory: zed-clients
         run: |
           set -euo pipefail
           nix flake lock --update-input swift-compat
@@ -44,11 +46,13 @@ jobs:
           nix-instantiate --parse flake.nix >/dev/null
           git diff --check
       - name: Certify the exact official Swift stage
+        working-directory: zed-clients
         run: |
           set -euo pipefail
           nix develop --no-update-lock-file .#swift -c swift --version
           nix develop --no-update-lock-file .#swift -c agent-check swift
       - name: Commit immutable lock and canonical Nix layout
+        working-directory: zed-clients
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
