@@ -5,6 +5,9 @@ on:
     branches:
       - alexanderdmills/den-359-zed-clients-nix-agent-shell-v4
     paths:
+      - flake.nix
+      - .nix/dev-shell.nix
+      - .nix/swift-release.nix
       - .github/workflows/test-official-swift-stage.yml
 
 permissions:
