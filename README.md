@@ -20,11 +20,11 @@ JSON Schemas in `zed-interfaces/schemas/`).
 | [clients/swift/](clients/swift/) | `ZedClient` | Foundation only | `swift test --parallel` |
 
 The shared baseline is package/version lookup, text search, SHA-256-verified
-artifact download, organization claim, version yank/restore, and multipart
-publication using JSON `meta` plus raw `artifact` bytes. All ten clients
-implement that core lifecycle. Method names remain idiomatic to each language;
-for example, some clients additionally expose `restore` or `setYanked`
-conveniences over the same yank endpoint.
+artifact download, organization claim, multipart publication using JSON `meta`
+plus raw `artifact` bytes, and version yank/restore. All ten clients
+implement that core lifecycle. Language-idiomatic APIs may expose the state
+transition as `yank`, `restore`, and/or `setYanked`, but they preserve the same
+registry contract and authenticated mutation boundary.
 
 Every client transports bearer credentials but does not parse them. Registry
 redirects are refused. Artifact downloads do not carry the registry bearer
@@ -47,6 +47,46 @@ GET  /v1/files/{org}/{name}/{version}/{path}
 Package listing, semantic search, embedding administration, and organization
 audit are newer router surfaces tracked separately so this core SDK matrix does
 not claim support it has not yet implemented.
+
+## Reproducible development environment
+
+The root Nix flake pins the multi-runtime contributor toolchain and exposes one
+non-interactive entrypoint for agents and humans:
+
+```bash
+nix develop --no-update-lock-file -c agent-check
+```
+
+Rust and browser-WASM checks consume `zed-interfaces` through the existing
+sibling path dependency. For local validation, check out the exact compatible
+contract beside this repository:
+
+```text
+../zed-interfaces @ 6e893ad0f28ccfbb7722f007d75e88548f1bcfdf
+../zed-clients
+```
+
+Focused stages are available when iterating:
+
+```bash
+nix develop -c agent-check contract
+nix develop -c agent-check typescript
+nix develop -c agent-check rust
+nix develop -c agent-check wasm
+nix develop -c agent-check dart
+nix develop -c agent-check swift
+```
+
+The complete check validates the locked flake, workflow syntax, shell scripts,
+the single root `.zpkg.toml` / `.zpkg.lock` release set, and all ten native SDK
+packages. Mutable package-manager caches are isolated under
+`.cache/nix-agent/`; they are never release inputs. The dedicated GitHub
+Actions workflow uses read-only permissions, immutable action SHAs, the
+committed flake lock, and the same `agent-check` command.
+
+The real-browser Chromium, Firefox, and WebKit transport contract remains a
+separate exact-head workflow because browser binaries and retained evidence are
+not part of the everyday development shell.
 
 ## License
 
