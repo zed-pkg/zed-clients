@@ -43,6 +43,14 @@
         elixir = pkgs.lib.attrByPath [ "beam27Packages" "elixir_1_17" ] pkgs.elixir pkgs;
         swift = pkgs.swiftPackages.swift;
         swiftpm = pkgs.swiftPackages.swiftpm;
+        swiftRuntime =
+          if pkgs.stdenv.hostPlatform.isDarwin then
+            [ ]
+          else
+            [
+              pkgs.swiftPackages.Dispatch
+              pkgs.swiftPackages.Foundation
+            ];
       };
 
       commonToolchainFor =
@@ -66,8 +74,7 @@
           runtime = runtimePackagesFor pkgs;
           focused =
             if stage == "toolchains" then
-              with pkgs;
-              [
+              (with pkgs; [
                 actionlint
                 cargo
                 dart
@@ -91,7 +98,8 @@
                 runtime.elixir
                 runtime.swift
                 runtime.swiftpm
-              ]
+              ])
+              ++ runtime.swiftRuntime
             else if stage == "preflight" then
               with pkgs;
               [
@@ -162,6 +170,7 @@
                 runtime.swift
                 runtime.swiftpm
               ]
+              ++ runtime.swiftRuntime
             else
               throw "unknown zed-clients agent-check stage: ${stage}";
         in
@@ -205,6 +214,7 @@
             runtime.swift
             runtime.swiftpm
           ]
+          ++ runtime.swiftRuntime
         );
     in
     {
@@ -250,6 +260,8 @@
               inherit pkgs agentCheck;
               toolchain = stageToolchainFor pkgs stage;
               swiftCompiler = if stage == "swift" || stage == "toolchains" then runtime.swift else null;
+              swiftRuntime =
+                if stage == "swift" || stage == "toolchains" then runtime.swiftRuntime else [ ];
             }
           );
         in
@@ -259,6 +271,7 @@
             inherit pkgs agentCheck;
             toolchain = fullToolchainFor pkgs;
             swiftCompiler = runtime.swift;
+            swiftRuntime = runtime.swiftRuntime;
           };
         }
       );

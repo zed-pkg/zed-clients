@@ -3,6 +3,7 @@
   agentCheck,
   toolchain,
   swiftCompiler ? null,
+  swiftRuntime ? [ ],
 }:
 pkgs.mkShell {
   packages = toolchain ++ [ agentCheck ];
@@ -36,6 +37,9 @@ pkgs.mkShell {
       "$NIX_AGENT_CACHE_ROOT/maven"
     ${pkgs.lib.optionalString (swiftCompiler != null) ''
       export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
+    ''}
+    ${pkgs.lib.optionalString (swiftRuntime != [ ]) ''
+      export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath swiftRuntime}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     ''}
   '';
 }
