@@ -5,6 +5,10 @@ on:
     branches:
       - alexanderdmills/den-359-zed-clients-nix-agent-shell-v5
     paths:
+      - flake.nix
+      - flake.lock
+      - .nix/dev-shell.nix
+      - .nix/swift-release.nix
       - .github/workflows/certify-swift-compat.yml
 
 permissions:
