@@ -15,6 +15,7 @@ dir = ".vendor/.zed"
 
 [dependencies]
 "zed-pkg/zed-interfaces" = "^0.1.0"
+"zed-pkg/zed-lib" = "^0.1.0"
 
 [publish]
 include_readme = true
@@ -35,7 +36,7 @@ dir = "clients/python"
 adapter = "python"
 
 [targets.golang]
-dir = "clients/go"
+dir = "clients/golang"
 name = "zed-clients-golang"
 adapter = "go"
 
@@ -97,3 +98,27 @@ adapter = "none"
 
 [targets.swift]
 dir = "clients/swift"
+
+[targets.gleamlang]
+dir = "clients/gleamlang"
+adapter = "none"
+
+[targets.python3]
+dir = "clients/python3"
+adapter = "none"
+
+[targets.typescript-nodejs]
+dir = "clients/typescript/nodejs"
+adapter = "node"
+
+[targets.typescript-deno]
+dir = "clients/typescript/deno"
+adapter = "none"
+
+[targets.typescript-bun]
+dir = "clients/typescript/bun"
+adapter = "node"
+
+[targets.typescript-edge]
+dir = "clients/typescript/edge"
+adapter = "none"
