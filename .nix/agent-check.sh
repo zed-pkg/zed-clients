@@ -48,6 +48,21 @@ require_interfaces_checkout() {
   fi
 }
 
+run_unlocked_cargo_tests() {
+  local had_lock=0
+  if [[ -f Cargo.lock ]]; then
+    had_lock=1
+  fi
+  cleanup_generated_lock() {
+    if [[ "$had_lock" -eq 0 ]]; then
+      rm -f Cargo.lock
+    fi
+  }
+  trap cleanup_generated_lock EXIT
+  cargo fmt --check
+  cargo test
+}
+
 run_stage() {
   local stage="$1"
   printf '\n==> agent-check stage: %s\n' "$stage"
@@ -74,7 +89,11 @@ run_stage() {
       mvn --version
       ruby --version
       php --version
-      swift --version
+      if [[ -n "${SWIFT_EXEC:-}" ]]; then
+        "$SWIFT_EXEC" --version
+      else
+        swift --version
+      fi
       ;;
     preflight)
       git diff --check
@@ -118,16 +137,14 @@ run_stage() {
       require_interfaces_checkout
       (
         cd clients/rust
-        cargo fmt --check
-        cargo test --locked
+        run_unlocked_cargo_tests
       )
       ;;
     wasm)
       require_interfaces_checkout
       (
         cd clients/wasm
-        cargo fmt --check
-        cargo test --locked
+        run_unlocked_cargo_tests
       )
       ;;
     dart)
@@ -195,6 +212,11 @@ run_stage() {
     swift)
       (
         cd clients/swift
+        if [[ -z "${SWIFT_EXEC:-}" || ! -x "$SWIFT_EXEC" ]]; then
+          printf 'SWIFT_EXEC must point to the flake-locked Swift compiler\n' >&2
+          exit 1
+        fi
+        "$SWIFT_EXEC" --version
         swift test --parallel
       )
       ;;

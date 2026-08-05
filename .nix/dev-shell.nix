@@ -2,6 +2,7 @@
   pkgs,
   agentCheck,
   toolchain,
+  swiftCompiler ? null,
 }:
 pkgs.mkShell {
   packages = toolchain ++ [ agentCheck ];
@@ -33,5 +34,8 @@ pkgs.mkShell {
       "$MIX_HOME" \
       "$HEX_HOME" \
       "$NIX_AGENT_CACHE_ROOT/maven"
+    ${pkgs.lib.optionalString (swiftCompiler != null) ''
+      export SWIFT_EXEC="${swiftCompiler}/bin/swiftc"
+    ''}
   '';
 }

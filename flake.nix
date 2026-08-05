@@ -244,12 +244,15 @@
         system:
         let
           pkgs = pkgsFor system;
+          runtime = runtimePackagesFor pkgs;
           agentCheck = self.packages.${system}.agentCheck;
           focusedShells = pkgs.lib.genAttrs stages (
             stage:
             import ./.nix/dev-shell.nix {
               inherit pkgs agentCheck;
               toolchain = stageToolchainFor pkgs stage;
+              swiftCompiler =
+                if stage == "swift" || stage == "toolchains" then runtime.swift else null;
             }
           );
         in
@@ -258,6 +261,7 @@
           default = import ./.nix/dev-shell.nix {
             inherit pkgs agentCheck;
             toolchain = fullToolchainFor pkgs;
+            swiftCompiler = runtime.swift;
           };
         }
       );
