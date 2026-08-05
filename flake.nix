@@ -36,16 +36,14 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
       pkgsFor = system: import nixpkgs { inherit system; };
 
-      runtimePackagesFor =
-        pkgs:
-        {
-          node = pkgs.lib.attrByPath [ "nodejs_22" ] pkgs.nodejs pkgs;
-          python = pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs;
-          erlang = pkgs.lib.attrByPath [ "beam27Packages" "erlang" ] pkgs.erlang pkgs;
-          elixir = pkgs.lib.attrByPath [ "beam27Packages" "elixir_1_17" ] pkgs.elixir pkgs;
-          swift = pkgs.swiftPackages.swift;
-          swiftpm = pkgs.swiftPackages.swiftpm;
-        };
+      runtimePackagesFor = pkgs: {
+        node = pkgs.lib.attrByPath [ "nodejs_22" ] pkgs.nodejs pkgs;
+        python = pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs;
+        erlang = pkgs.lib.attrByPath [ "beam27Packages" "erlang" ] pkgs.erlang pkgs;
+        elixir = pkgs.lib.attrByPath [ "beam27Packages" "elixir_1_17" ] pkgs.elixir pkgs;
+        swift = pkgs.swiftPackages.swift;
+        swiftpm = pkgs.swiftPackages.swiftpm;
+      };
 
       commonToolchainFor =
         pkgs: with pkgs; [
@@ -251,8 +249,7 @@
             import ./.nix/dev-shell.nix {
               inherit pkgs agentCheck;
               toolchain = stageToolchainFor pkgs stage;
-              swiftCompiler =
-                if stage == "swift" || stage == "toolchains" then runtime.swift else null;
+              swiftCompiler = if stage == "swift" || stage == "toolchains" then runtime.swift else null;
             }
           );
         in
