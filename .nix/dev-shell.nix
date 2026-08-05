@@ -4,9 +4,15 @@
   toolchain,
   swiftCompiler,
   swiftLibraryPath,
+  swiftRuntime,
 }:
 pkgs.mkShell {
   packages = toolchain ++ [ agentCheck ];
+
+  # Swift's wrapped compiler discovers Foundation, Dispatch, and XCTest module
+  # search paths from buildInputs. Keeping them only in LD_LIBRARY_PATH makes
+  # the shared libraries visible but leaves `import XCTest` unresolved.
+  buildInputs = swiftRuntime;
 
   LANG = if pkgs.stdenv.hostPlatform.isDarwin then "en_US.UTF-8" else "C.UTF-8";
   LC_ALL = if pkgs.stdenv.hostPlatform.isDarwin then "en_US.UTF-8" else "C.UTF-8";
