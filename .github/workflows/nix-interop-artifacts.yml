@@ -1,0 +1,202 @@
+name: Nix interoperability artifacts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/nix-interop-artifacts.yml"
+      - "NIX_INTEROP_ARTIFACTS.md"
+      - "clients/typescript/src/nix-export-plan.ts"
+      - "clients/typescript/src/nix-adapter.ts"
+      - "clients/typescript/src/index.ts"
+      - "clients/typescript/test/nix-export-plan.test.mjs"
+      - "clients/typescript/test/nix-adapter.test.mjs"
+      - "clients/typescript/package.json"
+      - "clients/typescript/package-lock.json"
+      - "clients/typescript/tsconfig.json"
+      - "clients/go/nix_adapter.go"
+      - "clients/go/nix_adapter_test.go"
+      - "clients/go/go.mod"
+  pull_request:
+    paths:
+      - ".github/workflows/nix-interop-artifacts.yml"
+      - "NIX_INTEROP_ARTIFACTS.md"
+      - "clients/typescript/src/nix-export-plan.ts"
+      - "clients/typescript/src/nix-adapter.ts"
+      - "clients/typescript/src/index.ts"
+      - "clients/typescript/test/nix-export-plan.test.mjs"
+      - "clients/typescript/test/nix-adapter.test.mjs"
+      - "clients/typescript/package.json"
+      - "clients/typescript/package-lock.json"
+      - "clients/typescript/tsconfig.json"
+      - "clients/go/nix_adapter.go"
+      - "clients/go/nix_adapter_test.go"
+      - "clients/go/go.mod"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-interop-artifacts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build, test, and publish commit artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/typescript/package-lock.json
+
+      - name: Install pinned Go toolchain
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: "1.22"
+          cache-dependency-path: clients/go/go.mod
+
+      - name: Build and test TypeScript interoperability readers
+        working-directory: clients/typescript
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm test
+
+      - name: Vet and test Go interoperability readers
+        working-directory: clients/go
+        run: |
+          set -euo pipefail
+          go vet ./...
+          go test ./...
+
+      - name: Assemble deterministic artifacts and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/zed-nix-interop-artifacts"
+          stage="$RUNNER_TEMP/zed-nix-interop-stage"
+          rm -rf "$root" "$stage"
+          mkdir -p "$root" "$stage/typescript" "$stage/go"
+
+          cp -R clients/typescript/dist "$stage/typescript/dist"
+          cp clients/typescript/package.json "$stage/typescript/package.json"
+          cp clients/typescript/package-lock.json "$stage/typescript/package-lock.json"
+          cp clients/typescript/NIX_INTEROP.md "$stage/typescript/NIX_INTEROP.md"
+          cp clients/typescript/src/nix-export-plan.ts "$stage/typescript/nix-export-plan.ts"
+          cp clients/typescript/src/nix-adapter.ts "$stage/typescript/nix-adapter.ts"
+
+          cp clients/go/go.mod "$stage/go/go.mod"
+          cp clients/go/client.go "$stage/go/client.go"
+          cp clients/go/nix_adapter.go "$stage/go/nix_adapter.go"
+          cp clients/go/nix_adapter_test.go "$stage/go/nix_adapter_test.go"
+
+          tar \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C "$stage/typescript" \
+            -czf "$root/zed-nix-interop-typescript.tar.gz" .
+          tar \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C "$stage/go" \
+            -czf "$root/zed-nix-interop-go.tar.gz" .
+
+          python3 - "$root/provenance.json" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          output = pathlib.Path(sys.argv[1])
+          document = {
+              "schema": "zed.nix-interop-sdk-artifacts/v1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "artifacts": [
+                  {
+                      "name": "zed-nix-interop-typescript.tar.gz",
+                      "language": "typescript",
+                      "contracts": [
+                          "zed.nix-export-plan/v1",
+                          "zed.nix-adapter/v1",
+                      ],
+                  },
+                  {
+                      "name": "zed-nix-interop-go.tar.gz",
+                      "language": "go",
+                      "contracts": ["zed.nix-adapter/v1"],
+                  },
+              ],
+          }
+          output.write_text(
+              json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          (
+            cd "$root"
+            sha256sum \
+              zed-nix-interop-typescript.tar.gz \
+              zed-nix-interop-go.tar.gz \
+              provenance.json > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+          find "$root" -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort
+          cat "$root/SHA256SUMS"
+
+      - name: Upload commit-addressed interoperability artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: zed-nix-interop-${{ github.sha }}
+          path: ${{ runner.temp }}/zed-nix-interop-artifacts
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          include-hidden-files: false
+
+      - name: Enforce read-only publishing boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/nix-interop-artifacts.yml').read_text()
+          assert 'permissions:\n  contents: read' in workflow
+          assert 'persist-credentials: false' in workflow
+          for forbidden in (
+              'contents: write',
+              'packages: write',
+              'id-token: write',
+              'pull_request_target:',
+              'git push',
+              'npm publish',
+              'go env GOPROXY=direct',
+              'secrets: inherit',
+          ):
+              assert forbidden not in workflow, forbidden
+          PY
