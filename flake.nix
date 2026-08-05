@@ -61,27 +61,42 @@
                 meta = upstream.meta or { };
               }
               ''
-                mirror_output() {
+                mirror_children() {
                   source="$1"
                   destination="$2"
                   mkdir -p "$destination"
-                  cp -rs "$source"/. "$destination"/
+                  while IFS= read -r -d $'\0' entry; do
+                    ln -s "$entry" "$destination/$(basename "$entry")"
+                  done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
                 }
 
-                mirror_output ${upstream} "$out"
-                mirror_output ${upstream.lib} "$lib"
-                mirror_output ${upstream.dev} "$dev"
-                mirror_output ${upstream.doc} "$doc"
-                mirror_output ${upstream.man} "$man"
+                mirror_children_except() {
+                  source="$1"
+                  destination="$2"
+                  excluded="$3"
+                  mkdir -p "$destination"
+                  while IFS= read -r -d $'\0' entry; do
+                    name="$(basename "$entry")"
+                    if [ "$name" = "$excluded" ]; then
+                      continue
+                    fi
+                    ln -s "$entry" "$destination/$name"
+                  done < <(find "$source" -mindepth 1 -maxdepth 1 -print0)
+                }
+
+                mirror_children ${upstream} "$out"
+                mirror_children_except ${upstream.lib} "$lib" lib
+                mirror_children ${upstream.dev} "$dev"
+                mirror_children ${upstream.doc} "$doc"
+                mirror_children ${upstream.man} "$man"
 
                 ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-                  # `cp -rs` may mirror `lib` as a directory populated with
-                  # read-only child symlinks. Replace only that output-local
-                  # directory, then rehydrate immutable child symlinks and add
-                  # the index-store path SwiftPM's Linux discovery expects.
-                  rm -rf "$lib/lib"
+                  # Build a writable output-local directory whose children are
+                  # immutable symlinks. This avoids mutating or recursively
+                  # deleting the read-only mirrored Swift runtime tree.
                   mkdir -p "$lib/lib"
-                  cp -rs ${upstream.lib}/lib/. "$lib/lib"/
+                  mirror_children ${upstream.lib}/lib "$lib/lib"
+                  test ! -e "$lib/lib/libIndexStore.so"
                   ln -s ${upstream}/lib/libIndexStore.so "$lib/lib/libIndexStore.so"
                 ''}
               '';
