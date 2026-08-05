@@ -188,15 +188,16 @@ jobs:
           workflow = Path('.github/workflows/nix-interop-artifacts.yml').read_text()
           assert 'permissions:\n  contents: read' in workflow
           assert 'persist-credentials: false' in workflow
-          for forbidden in (
-              'contents: write',
-              'packages: write',
-              'id-token: write',
-              'pull_request_target:',
-              'git push',
-              'npm publish',
-              'go env GOPROXY=direct',
-              'secrets: inherit',
-          ):
-              assert forbidden not in workflow, forbidden
+          forbidden = (
+              'contents' + ': write',
+              'packages' + ': write',
+              'id-token' + ': write',
+              'pull_request' + '_target:',
+              'git' + ' push',
+              'npm' + ' publish',
+              'go env GOPROXY=' + 'direct',
+              'secrets' + ': inherit',
+          )
+          for marker in forbidden:
+              assert marker not in workflow, marker
           PY
