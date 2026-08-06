@@ -4,7 +4,8 @@
 /// clients.
 library;
 
-/// Registry error carrying the stable `ApiError.code`.
+/// Registry error carrying the stable `ApiError.code` and bounded explicit
+/// remote text. The default diagnostic intentionally excludes that text.
 class ZedApiError implements Exception {
   ZedApiError(this.status, this.code, this.message);
 
@@ -12,8 +13,11 @@ class ZedApiError implements Exception {
   final String code;
   final String message;
 
+  /// Explicit alias for callers that intentionally inspect bounded remote text.
+  String get registryMessage => message;
+
   @override
-  String toString() => 'registry error $status: $code: $message';
+  String toString() => 'registry error $status: $code';
 }
 
 class PackageSummary {
@@ -122,7 +126,8 @@ class SearchResponse {
   factory SearchResponse.fromJson(Map<String, dynamic> json) => SearchResponse(
         query: json['query'] as String? ?? '',
         items: (json['items'] as List<dynamic>? ?? const [])
-            .map((item) => PackageSummary.fromJson(item as Map<String, dynamic>))
+            .map(
+                (item) => PackageSummary.fromJson(item as Map<String, dynamic>))
             .toList(),
       );
 

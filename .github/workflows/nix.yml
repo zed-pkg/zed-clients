@@ -1,0 +1,91 @@
+name: nix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - .nix/**
+      - .zpkg.toml
+      - .zpkg.lock
+      - scripts/validate-client-matrix.py
+      - clients/**
+      - README.md
+      - agents.md
+      - .github/workflows/nix.yml
+  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - .nix/**
+      - .zpkg.toml
+      - .zpkg.lock
+      - scripts/validate-client-matrix.py
+      - clients/**
+      - README.md
+      - agents.md
+      - .github/workflows/nix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage:
+    name: pinned ${{ matrix.stage }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        stage:
+          - toolchains
+          - preflight
+          - contract
+          - typescript
+          - python
+          - go
+          - rust
+          - wasm
+          - dart
+          - gleam
+          - erlang
+          - elixir
+          - java
+          - kotlin
+          - ruby
+          - php
+          - swift
+    steps:
+      - name: Check out zed-clients
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: zed-clients
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out the exact compatible interface contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: 5f15f1f2686199924b3e32e7ef8e6a85434bca3e
+          path: zed-interfaces
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Run the pinned runtime-focused stage
+        working-directory: zed-clients
+        run: >-
+          nix develop --no-update-lock-file ".#${{ matrix.stage }}"
+          -c agent-check "${{ matrix.stage }}"

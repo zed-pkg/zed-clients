@@ -2,7 +2,7 @@
 
 The package is stdlib-only, transports bearer credentials without parsing them,
 never retries writes, refuses redirects, bounds response bodies, and verifies
-artifact sha256 values before writing bytes to disk.
+artifact sha256 values before exposing bytes on disk.
 """
 
 from __future__ import annotations
@@ -10,6 +10,9 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import math
+import os
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +26,7 @@ DEFAULT_TIMEOUT = 30.0
 MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 MAX_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_ERROR_BODY_BYTES = 16 * 1024
+MAX_PATH_SEGMENT_BYTES = 256
 _DOWNLOAD_SLACK = 1024 * 1024
 
 
@@ -35,10 +39,34 @@ def _is_loopback_host(host: str) -> bool:
         return False
 
 
+def _internal_host_allowed(host: str) -> bool:
+    host = host.lower().strip("[]")
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+        return address.is_loopback or address.is_private or address.is_link_local
+    except ValueError:
+        return ("." not in host or host.endswith(".svc.cluster.local")
+                or host.endswith(".internal"))
+
+
 def _download_limit(size: int) -> int:
     if size and size > 0:
         return min(size + _DOWNLOAD_SLACK, MAX_ARTIFACT_BYTES)
     return MAX_ARTIFACT_BYTES
+
+
+def _require_text(value: str, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must not be blank")
+    if value in {".", ".."}:
+        raise ValueError(f"{name} must not be a dot segment")
+    if len(value.encode("utf-8")) > MAX_PATH_SEGMENT_BYTES:
+        raise ValueError(f"{name} exceeds {MAX_PATH_SEGMENT_BYTES} UTF-8 bytes")
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
+        raise ValueError(f"{name} must not contain control characters")
+    return value
 
 
 class ZedApiError(Exception):
@@ -58,16 +86,16 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _quote(segment: str) -> str:
-    return urllib.parse.quote(segment, safe="")
+def _quote(segment: str, name: str = "path segment") -> str:
+    return urllib.parse.quote(_require_text(segment, name), safe="")
 
 
 def package_path(org: str, name: str) -> str:
-    return f"/v1/packages/{_quote(org)}/{_quote(name)}"
+    return f"/v1/packages/{_quote(org, 'org')}/{_quote(name, 'name')}"
 
 
 def version_path(org: str, name: str, version: str) -> str:
-    return f"/v1/packages/{_quote(org)}/{_quote(name)}/versions/{_quote(version)}"
+    return f"{package_path(org, name)}/versions/{_quote(version, 'version')}"
 
 
 def yank_path(org: str, name: str, version: str) -> str:
@@ -75,27 +103,15 @@ def yank_path(org: str, name: str, version: str) -> str:
 
 
 def artifact_path(sha256: str) -> str:
-    return f"/v1/artifacts/{_quote(sha256)}"
+    return f"/v1/artifacts/{_quote(sha256, 'sha256')}"
 
 
-def _internal_host_allowed(host: str) -> bool:
-    """Loopback, private/link-local IPs, and in-cluster names — hosts a bearer
-    token may reach over cleartext because the traffic stays inside the trust
-    boundary."""
-    host = host.lower().strip("[]")
-    if not host or host == "localhost" or host.endswith(".localhost"):
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback or \
-            ipaddress.ip_address(host).is_private or \
-            ipaddress.ip_address(host).is_link_local
-    except ValueError:
-        pass
-    return ("." not in host or host.endswith(".svc.cluster.local")
-            or host.endswith(".internal"))
-
-
-def _normalize_registry_url(raw: str, allow_insecure_transport: bool = False) -> str:
+def _normalize_registry_url(
+    raw: str,
+    *,
+    credentialed: bool = False,
+    allow_insecure_transport: bool = False,
+) -> str:
     parsed = urllib.parse.urlsplit(raw.strip())
     if (
         parsed.scheme not in {"http", "https"}
@@ -109,14 +125,19 @@ def _normalize_registry_url(raw: str, allow_insecure_transport: bool = False) ->
             "registry_url must be a credential-free absolute HTTP(S) URL "
             "without query or fragment"
         )
-    # Scheme http alone is not enough: a bearer token must not cross a public
-    # hop in the clear.
-    if (parsed.scheme == "http" and not _internal_host_allowed(parsed.hostname)
+    if (credentialed and parsed.scheme == "http"
+            and not _internal_host_allowed(parsed.hostname)
             and not allow_insecure_transport):
         raise ValueError(
-            "refusing cleartext http:// to public host %r: use https://, an "
-            "in-cluster address, or loopback" % parsed.hostname
+            f"refusing cleartext HTTP to public host {parsed.hostname!r} while carrying a token"
         )
+    for index, encoded_segment in enumerate(parsed.path.split("/"), start=1):
+        if not encoded_segment:
+            continue
+        decoded_segment = urllib.parse.unquote(encoded_segment)
+        _require_text(decoded_segment, f"registry path segment {index}")
+        if "/" in decoded_segment or "\\" in decoded_segment:
+            raise ValueError("registry path segments must not contain encoded separators")
     path = parsed.path.rstrip("/")
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
 
@@ -145,8 +166,9 @@ def _api_error(error: urllib.error.HTTPError) -> ZedApiError:
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
-            if isinstance(parsed.get("code"), str):
-                code = parsed["code"]
+            candidate = parsed.get("code")
+            if isinstance(candidate, str) and candidate.strip():
+                code = candidate.strip()
             if isinstance(parsed.get("message"), str):
                 message = parsed["message"]
     except ValueError:
@@ -227,21 +249,42 @@ class ZedClient:
         opener: Optional[urllib.request.OpenerDirector] = None,
         allow_insecure_transport: bool = False,
     ) -> None:
-        self.base = _normalize_registry_url(registry_url, allow_insecure_transport)
         self.token = token.strip() if token and token.strip() else None
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        self.base = _normalize_registry_url(
+            registry_url,
+            credentialed=self.token is not None,
+            allow_insecure_transport=allow_insecure_transport,
+        )
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be a positive finite number")
         self.timeout = timeout
         self._opener = opener or urllib.request.build_opener(_NoRedirectHandler())
 
     def __repr__(self) -> str:
         return f"ZedClient(base={self.base!r}, token='[REDACTED]')"
 
+    def _require_token(self) -> str:
+        if self.token is None:
+            raise ZedApiError(
+                0,
+                "missing_token",
+                "authenticated registry operation requires a nonblank bearer token",
+            )
+        return self.token
+
     def _allowed_download_url(self, raw: str) -> str:
         parsed = urllib.parse.urlsplit(raw)
         if parsed.username is not None or parsed.password is not None or parsed.fragment:
-            raise ZedApiError(0, "bad_download_url", "download URL contains credentials or fragment")
-        loopback = _is_loopback_host(parsed.hostname or "")
+            raise ZedApiError(0, "bad_download_url", "download URL is invalid")
+        if parsed.scheme not in {"http", "https"}:
+            raise ZedApiError(
+                0,
+                "insecure_download_url",
+                f"refusing download over {parsed.scheme!r}",
+            )
+        if not parsed.hostname:
+            raise ZedApiError(0, "bad_download_url", "download URL is invalid")
+        loopback = _is_loopback_host(parsed.hostname)
         if parsed.scheme == "https":
             return raw
         if parsed.scheme == "http" and (loopback or self.base.startswith("http://")):
@@ -250,8 +293,8 @@ class ZedClient:
 
     def _headers(self, *, authorized: bool) -> dict[str, str]:
         headers = {"user-agent": USER_AGENT, "accept": "application/json"}
-        if authorized and self.token:
-            headers["authorization"] = f"Bearer {self.token}"
+        if authorized:
+            headers["authorization"] = f"Bearer {self._require_token()}"
         return headers
 
     def _open(self, request: urllib.request.Request):
@@ -304,17 +347,18 @@ class ZedClient:
         return [_from_wire(PackageSummary, item) for item in data.get("items", [])]
 
     def claim_org(self, slug: str) -> ClaimOrgResponse:
+        checked_slug = _require_text(slug, "slug")
         return _from_wire(
             ClaimOrgResponse,
             self._request(
                 "/v1/orgs",
                 method="POST",
-                body={"slug": slug},
+                body={"slug": checked_slug},
                 authorized=True,
             ),
         )
 
-    def yank(self, org: str, name: str, version: str, yanked: bool) -> YankResponse:
+    def set_yanked(self, org: str, name: str, version: str, yanked: bool) -> YankResponse:
         return _from_wire(
             YankResponse,
             self._request(
@@ -324,6 +368,18 @@ class ZedClient:
                 authorized=True,
             ),
         )
+
+    def yank(
+        self,
+        org: str,
+        name: str,
+        version: str,
+        yanked: bool = True,
+    ) -> YankResponse:
+        return self.set_yanked(org, name, version, yanked)
+
+    def restore(self, org: str, name: str, version: str) -> YankResponse:
+        return self.set_yanked(org, name, version, False)
 
     def download_artifact(self, version: VersionMetadata, dest_path: str) -> None:
         raw = version.download_url.strip()
@@ -355,10 +411,26 @@ class ZedClient:
         if len(payload) > limit:
             raise ZedApiError(0, "artifact_too_large", f"artifact exceeded {limit} bytes")
         actual = hashlib.sha256(payload).hexdigest()
-        if actual != version.sha256:
+        if actual.casefold() != version.sha256.casefold():
             raise ZedApiError(0, "sha256_mismatch", f"expected {version.sha256}, got {actual}")
-        with open(dest_path, "wb") as handle:
-            handle.write(payload)
+
+        destination = os.path.abspath(os.fspath(dest_path))
+        parent = os.path.dirname(destination)
+        os.makedirs(parent, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix=".zed-artifact-", dir=parent)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, destination)
+        except BaseException:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+            raise
 
     def publish(
         self,
@@ -368,6 +440,34 @@ class ZedClient:
         meta: Any,
         artifact: bytes,
     ) -> PublishResponse:
+        self._require_token()
+        checked_org = _require_text(org, "org")
+        checked_name = _require_text(name, "name")
+        checked_version = _require_text(version, "version")
+        if len(artifact) > MAX_ARTIFACT_BYTES:
+            raise ZedApiError(
+                0,
+                "artifact_too_large",
+                f"artifact exceeded {MAX_ARTIFACT_BYTES} bytes",
+            )
+
+        try:
+            parsed_meta = json.loads(meta) if isinstance(meta, str) else meta
+            package = parsed_meta["manifest"]["package"]
+            coordinate = (package["org"], package["name"], package["version"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ZedApiError(
+                0,
+                "invalid_publish_meta",
+                f"meta.manifest.package must contain org, name, and version: {error}",
+            ) from None
+        if coordinate != (checked_org, checked_name, checked_version):
+            raise ZedApiError(
+                0,
+                "publish_coordinate_mismatch",
+                "publish route and meta.manifest.package coordinates differ",
+            )
+
         meta_json = meta if isinstance(meta, str) else json.dumps(meta)
         boundary = uuid.uuid4().hex
         multipart = b"".join(
@@ -375,6 +475,7 @@ class ZedClient:
                 (
                     f"--{boundary}\r\n"
                     'Content-Disposition: form-data; name="meta"\r\n'
+                    "Content-Type: application/json\r\n"
                     "\r\n"
                     f"{meta_json}\r\n"
                 ).encode(),
@@ -390,7 +491,7 @@ class ZedClient:
             ]
         )
         data = self._request(
-            version_path(org, name, version),
+            version_path(checked_org, checked_name, checked_version),
             method="PUT",
             data=multipart,
             content_type=f"multipart/form-data; boundary={boundary}",
