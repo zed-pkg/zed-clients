@@ -167,13 +167,42 @@ func (c *Client) String() string {
 	return fmt.Sprintf("ZedClient(base=%s, token=[REDACTED])", c.Base)
 }
 
+// internalHostAllowed reports whether a credential may reach host over
+// cleartext: loopback, private/link-local IPs, single-label service names, and
+// cluster DNS suffixes all stay inside the trust boundary.
+func internalHostAllowed(host string) bool {
+	host = strings.ToLower(strings.Trim(host, "[]"))
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+	return !strings.Contains(host, ".") ||
+		strings.HasSuffix(host, ".svc.cluster.local") ||
+		strings.HasSuffix(host, ".internal")
+}
+
 func normalizeRegistryURL(raw string) (string, error) {
+	return normalizeRegistryURLAllowing(raw, false)
+}
+
+// normalizeRegistryURLAllowing skips the cleartext rule when allowInsecure is set.
+func normalizeRegistryURLAllowing(raw string, allowInsecure bool) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	parsed, err := url.Parse(trimmed)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 		parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", fmt.Errorf(
 			"registry URL must be a credential-free absolute HTTP(S) URL without query or fragment",
+		)
+	}
+	// Scheme http alone is not enough: a bearer token must not cross a public
+	// hop in the clear.
+	if parsed.Scheme == "http" && !internalHostAllowed(parsed.Hostname()) && !allowInsecure {
+		return "", fmt.Errorf(
+			"refusing cleartext http:// to public host %q: use https://, an in-cluster address, or loopback",
+			parsed.Hostname(),
 		)
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")

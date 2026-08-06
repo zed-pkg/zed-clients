@@ -117,10 +117,35 @@ export interface ClientOptions {
   fetchImpl?: typeof fetch;
   /** Per-request timeout in milliseconds (default {@link DEFAULT_TIMEOUT_MS}). */
   timeoutMs?: number;
+  /**
+   * Permit a cleartext `http://` registry on a public host.
+   *
+   * The registry token travels on every request, so cleartext to a host
+   * outside loopback/private/in-cluster ranges exposes it. Development
+   * registries that are genuinely reachable over plain HTTP set this
+   * explicitly; it is never the default.
+   */
+  allowInsecureTransport?: boolean;
+}
+
+/** Loopback, private/link-local IPs, and in-cluster names. */
+function internalHostAllowed(host: string): boolean {
+  host = host.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "" || host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "::1" || /^f[cd]/.test(host) || /^fe[89ab]/.test(host)) return true;
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  return !host.includes(".") || host.endsWith(".svc.cluster.local")
+    || host.endsWith(".internal");
 }
 
 /** Validate and normalize one registry base URL while preserving a path prefix. */
-export function normalizeRegistryUrl(raw: string): string {
+export function normalizeRegistryUrl(raw: string, allowInsecureTransport = false): string {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -137,6 +162,14 @@ export function normalizeRegistryUrl(raw: string): string {
   ) {
     throw new TypeError(
       "registryUrl must be a credential-free absolute HTTP(S) URL without query or fragment",
+    );
+  }
+  // Scheme http alone is not enough: a bearer token must not cross a public
+  // hop in the clear.
+  if (url.protocol === "http:" && !internalHostAllowed(url.hostname) && !allowInsecureTransport) {
+    throw new TypeError(
+      `zed: refusing cleartext http:// to public host "${url.hostname}": ` +
+        "use https://, an in-cluster address, or loopback",
     );
   }
   url.pathname = url.pathname.replace(/\/+$/, "");
@@ -201,7 +234,10 @@ export class ZedClient {
   private readonly timeoutMs: number;
 
   constructor(options: ClientOptions = {}) {
-    this.base = normalizeRegistryUrl(options.registryUrl ?? DEFAULT_REGISTRY_URL);
+    this.base = normalizeRegistryUrl(
+      options.registryUrl ?? DEFAULT_REGISTRY_URL,
+      options.allowInsecureTransport,
+    );
     this.token = options.token?.trim() || undefined;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;

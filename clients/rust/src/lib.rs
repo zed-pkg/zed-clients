@@ -50,6 +50,9 @@ pub enum Error {
     },
     #[error("invalid registry base URL")]
     InvalidBaseUrl,
+    /// Cleartext `http://` to a public host would expose the bearer token.
+    #[error("refusing cleartext http:// to a public host: use https://, an in-cluster address, or loopback")]
+    InsecureTransport,
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
     #[error("io error: {0}")]
@@ -67,6 +70,32 @@ pub struct Client {
     token: Option<String>,
     max_response_bytes: u64,
     http: reqwest::blocking::Client,
+}
+
+/// Whether a credential may travel to `host` in cleartext: loopback, a
+/// private/link-local IP, a single-label service name, or a cluster DNS suffix.
+fn cleartext_internal_host_allowed(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    if host == "::1" || host.starts_with("fc") || host.starts_with("fd") || host.starts_with("fe8")
+    {
+        return true;
+    }
+    if let Some(octets) = host
+        .split('.')
+        .map(str::parse::<u8>)
+        .collect::<core::result::Result<Vec<_>, _>>()
+        .ok()
+        .filter(|octets| octets.len() == 4)
+    {
+        return matches!(
+            (octets[0], octets[1]),
+            (127, _) | (10, _) | (172, 16..=31) | (192, 168) | (169, 254)
+        );
+    }
+    !host.contains('.') || host.ends_with(".svc.cluster.local") || host.ends_with(".internal")
 }
 
 impl fmt::Debug for Client {
@@ -92,6 +121,14 @@ impl Client {
             || parsed.fragment().is_some()
         {
             return Err(Error::InvalidBaseUrl);
+        }
+        // Scheme "http" alone is not enough: a bearer token must not cross a
+        // public hop in the clear. Loopback, private/link-local addresses, and
+        // in-cluster names stay allowed.
+        if parsed.scheme() == "http"
+            && !cleartext_internal_host_allowed(parsed.host_str().unwrap_or_default())
+        {
+            return Err(Error::InsecureTransport);
         }
         let path = parsed.path().trim_end_matches('/').to_string();
         parsed.set_path(&path);

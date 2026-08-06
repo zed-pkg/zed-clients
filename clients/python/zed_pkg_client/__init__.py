@@ -78,7 +78,24 @@ def artifact_path(sha256: str) -> str:
     return f"/v1/artifacts/{_quote(sha256)}"
 
 
-def _normalize_registry_url(raw: str) -> str:
+def _internal_host_allowed(host: str) -> bool:
+    """Loopback, private/link-local IPs, and in-cluster names — hosts a bearer
+    token may reach over cleartext because the traffic stays inside the trust
+    boundary."""
+    host = host.lower().strip("[]")
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback or \
+            ipaddress.ip_address(host).is_private or \
+            ipaddress.ip_address(host).is_link_local
+    except ValueError:
+        pass
+    return ("." not in host or host.endswith(".svc.cluster.local")
+            or host.endswith(".internal"))
+
+
+def _normalize_registry_url(raw: str, allow_insecure_transport: bool = False) -> str:
     parsed = urllib.parse.urlsplit(raw.strip())
     if (
         parsed.scheme not in {"http", "https"}
@@ -91,6 +108,14 @@ def _normalize_registry_url(raw: str) -> str:
         raise ValueError(
             "registry_url must be a credential-free absolute HTTP(S) URL "
             "without query or fragment"
+        )
+    # Scheme http alone is not enough: a bearer token must not cross a public
+    # hop in the clear.
+    if (parsed.scheme == "http" and not _internal_host_allowed(parsed.hostname)
+            and not allow_insecure_transport):
+        raise ValueError(
+            "refusing cleartext http:// to public host %r: use https://, an "
+            "in-cluster address, or loopback" % parsed.hostname
         )
     path = parsed.path.rstrip("/")
     return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, "", "")).rstrip("/")
@@ -200,8 +225,9 @@ class ZedClient:
         token: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT,
         opener: Optional[urllib.request.OpenerDirector] = None,
+        allow_insecure_transport: bool = False,
     ) -> None:
-        self.base = _normalize_registry_url(registry_url)
+        self.base = _normalize_registry_url(registry_url, allow_insecure_transport)
         self.token = token.strip() if token and token.strip() else None
         if timeout <= 0:
             raise ValueError("timeout must be positive")

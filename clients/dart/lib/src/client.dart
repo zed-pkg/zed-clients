@@ -79,6 +79,47 @@ void verifySha256(List<int> bytes, String expected) {
   }
 }
 
+/// Loopback, private/link-local IPs, and in-cluster names — hosts a credential
+/// may reach over cleartext because the traffic never leaves the trust boundary.
+bool _internalHostAllowed(String host) {
+  host = host.toLowerCase().replaceAll(RegExp(r'^\[|\]$'), '');
+  if (host.isEmpty || host == 'localhost' || host.endsWith('.localhost')) return true;
+  if (host == '::1') return true;
+  for (final prefix in const <String>['fc', 'fd', 'fe8', 'fe9', 'fea', 'feb']) {
+    if (host.startsWith(prefix)) return true;
+  }
+  final octets = host.split('.');
+  if (octets.length == 4) {
+    final parsed = octets.map(int.tryParse).toList();
+    if (parsed.every((o) => o != null && o >= 0 && o <= 255)) {
+      final a = parsed[0]!;
+      final b = parsed[1]!;
+      return a == 127 || a == 10 || (a == 172 && b >= 16 && b <= 31) ||
+          (a == 192 && b == 168) || (a == 169 && b == 254);
+    }
+  }
+  return !host.contains('.') ||
+      host.endsWith('.svc.cluster.local') ||
+      host.endsWith('.internal');
+}
+
+/// Refuse to carry a credential over cleartext to a public host.
+String _checkedBase(String baseUrl, {bool allowInsecureTransport = false}) {
+  final parsed = Uri.tryParse(baseUrl);
+  if (parsed != null &&
+      parsed.scheme == 'http' &&
+      !_internalHostAllowed(parsed.host) &&
+      !allowInsecureTransport) {
+    throw ArgumentError.value(
+      baseUrl,
+      'baseUrl',
+      'zed: refusing cleartext http:// to public host "${parsed.host}": '
+          'use https://, an in-cluster address, or loopback',
+    );
+  }
+  return baseUrl.replaceAll(RegExp(r'/+\$'), '');
+}
+
 /// Client for the zed-pkg registry API.
 final class ZedClient {
   ZedClient({
@@ -86,7 +127,11 @@ final class ZedClient {
     this.token,
     http.Client? httpClient,
     Duration timeout = defaultTimeout,
-  })  : base = registryUrl.replaceAll(RegExp(r'/+$'), ''),
+    bool allowInsecureTransport = false,
+  })  : base = _checkedBase(
+          registryUrl,
+          allowInsecureTransport: allowInsecureTransport,
+        ),
         _http = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null,
         _timeout = timeout;

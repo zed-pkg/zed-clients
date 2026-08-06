@@ -45,6 +45,48 @@ fn download_limit(size: u64) -> u64 {
     }
 }
 
+/// Loopback, private/link-local IPs, and in-cluster names — hosts the registry
+/// token may reach over cleartext because the traffic never leaves the trust
+/// boundary.
+fn internal_host_allowed(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    if host == "::1" || host.starts_with("fc") || host.starts_with("fd") || host.starts_with("fe8")
+    {
+        return true;
+    }
+    if let Some(octets) = host
+        .split('.')
+        .map(str::parse::<u8>)
+        .collect::<core::result::Result<Vec<_>, _>>()
+        .ok()
+        .filter(|octets| octets.len() == 4)
+    {
+        return matches!(
+            (octets[0], octets[1]),
+            (127, _) | (10, _) | (172, 16..=31) | (192, 168) | (169, 254)
+        );
+    }
+    !host.contains('.') || host.ends_with(".svc.cluster.local") || host.ends_with(".internal")
+}
+
+/// The host of `base` when its scheme is cleartext `http://`, else `None`.
+fn cleartext_base_host(base: &str) -> Option<&str> {
+    if base.len() < 7 || !base[..7].eq_ignore_ascii_case("http://") {
+        return None;
+    }
+    let rest = &base[7..];
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host_port = authority.rsplit('@').next().unwrap_or(authority);
+    if let Some(v6) = host_port.strip_prefix('[') {
+        return Some(v6.split(']').next().unwrap_or(v6));
+    }
+    Some(host_port.split(':').next().unwrap_or(host_port))
+}
+
 /// Enforce the download-url scheme policy: https is always allowed; http only
 /// for loopback hosts or when the registry base is itself http. A malicious
 /// registry response must not redirect fetches to plaintext or unexpected
@@ -123,6 +165,18 @@ impl ZedClient {
     async fn send(&self, request: Request, authorized: bool) -> Result<Response, JsValue> {
         if authorized {
             if let Some(token) = &self.token {
+                // The registry token must not cross a public hop in the
+                // clear. Anonymous calls and local/in-cluster dev registries
+                // are unaffected.
+                if let Some(host) = cleartext_base_host(&self.base) {
+                    if !internal_host_allowed(host) {
+                        return Err(error(&format!(
+                            "refusing cleartext http:// to public registry host \"{host}\" \
+                             while carrying a token: use https://, an in-cluster address, \
+                             or loopback"
+                        )));
+                    }
+                }
                 request
                     .headers()
                     .set("authorization", &format!("Bearer {token}"))?;
