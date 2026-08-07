@@ -29,6 +29,11 @@ publication using JSON `meta` plus raw `artifact` bytes. All fourteen clients
 implement that core lifecycle. Method names remain idiomatic to each language;
 for example, some clients additionally expose `restore` or `setYanked`
 conveniences over the same yank endpoint.
+artifact download, organization claim, multipart publication using JSON `meta`
+plus raw `artifact` bytes, and version yank/restore. All ten clients
+implement that core lifecycle. Language-idiomatic APIs may expose the state
+transition as `yank`, `restore`, and/or `setYanked`, but they preserve the same
+registry contract and authenticated mutation boundary.
 
 TypeScript uses one npm-compatible package with explicit entry points for
 Node.js, Deno, Bun, and edge runtimes. See
@@ -60,6 +65,7 @@ not claim support it has not yet implemented.
 ## Reproducible development environment
 
 The root Nix flake pins the contributor toolchain and exposes one
+The root Nix flake pins the multi-runtime contributor toolchain and exposes one
 non-interactive entrypoint for agents and humans:
 
 ```bash
@@ -72,6 +78,7 @@ contract beside this repository:
 
 ```text
 ../zed-interfaces @ 5f15f1f2686199924b3e32e7ef8e6a85434bca3e
+../zed-interfaces @ 6e893ad0f28ccfbb7722f007d75e88548f1bcfdf
 ../zed-clients
 ```
 
@@ -96,6 +103,22 @@ upstream binary.
 The dedicated GitHub Actions workflow uses read-only permissions, immutable
 action SHAs, the committed flake lock, and the same `agent-check` command.
 Real-browser Chromium, Firefox, and WebKit transport certification remains a
+nix develop -c agent-check contract
+nix develop -c agent-check typescript
+nix develop -c agent-check rust
+nix develop -c agent-check wasm
+nix develop -c agent-check dart
+nix develop -c agent-check swift
+```
+
+The complete check validates the locked flake, workflow syntax, shell scripts,
+the single root `.zpkg.toml` / `.zpkg.lock` release set, and all ten native SDK
+packages. Mutable package-manager caches are isolated under
+`.cache/nix-agent/`; they are never release inputs. The dedicated GitHub
+Actions workflow uses read-only permissions, immutable action SHAs, the
+committed flake lock, and the same `agent-check` command.
+
+The real-browser Chromium, Firefox, and WebKit transport contract remains a
 separate exact-head workflow because browser binaries and retained evidence are
 not part of the everyday development shell.
 
