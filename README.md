@@ -39,6 +39,10 @@ TypeScript uses one npm-compatible package with explicit entry points for
 Node.js, Deno, Bun, and edge runtimes. See
 [`clients/README.md`](clients/README.md) for the canonical naming map, including
 `python` = Python 3, `go` = Golang, and `gleam` = Gleamlang.
+publication using JSON `meta` plus raw `artifact` bytes. All ten clients
+implement that core lifecycle. Method names remain idiomatic to each language;
+for example, some clients additionally expose `restore` or `setYanked`
+conveniences over the same yank endpoint.
 
 Every client transports bearer credentials but does not parse them. Registry
 redirects are refused. Artifact downloads do not carry the registry bearer
