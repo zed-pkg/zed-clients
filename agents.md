@@ -55,6 +55,15 @@ Focused stages such as `nix develop -c agent-check go` are suitable while iterat
 - The Swift stage must use the flake-locked Nixpkgs compiler and SwiftPM packages. Do not introduce an independently repacked upstream toolchain.
 - Do not claim the Nix shell replaces the dedicated real-browser transport workflow; Chromium, Firefox, and WebKit execution remain separately certified.
 
+## Pinned development environment
+
+- Enter the repository toolchain with `nix develop --no-update-lock-file`; do not replace the committed `flake.lock` during ordinary validation.
+- Use `nix develop -c agent-check <stage>` for focused work and `nix develop -c agent-check` before review.
+- Rust and browser-WASM packages require the exact compatible `zed-interfaces` sibling checkout documented in `README.md` and pinned by `.github/workflows/nix.yml`.
+- Keep package-manager caches under `.cache/nix-agent/` or another explicit `NIX_AGENT_CACHE_ROOT`. Cache contents are disposable and must never affect release artifacts.
+- Changes to client manifests, `.zpkg.toml`, `.zpkg.lock`, the Nix flake, the interface pin, or validation scripts require the Nix workflow and the existing native matrix to pass on the same reviewed head.
+- Do not claim the Nix shell replaces the dedicated real-browser transport workflow; Chromium, Firefox, and WebKit execution remain separately certified.
+
 ## Validation
 
 The pinned `agents policy` workflow validates this hierarchy and the three tool pointers. Follow `README.md`, generator documentation, the root Nix entrypoint, and existing CI before requesting review.
