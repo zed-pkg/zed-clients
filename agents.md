@@ -20,6 +20,30 @@ This repository is the multi-language Zed client and SDK release set. It maps on
 - Regenerate deterministically and fail CI on generator drift, uncommitted output, missing packages, or lockfile changes.
 - Validate each language with its native formatter, compiler/type checker, tests, package metadata checks, and a shared contract fixture.
 - Coordinate API/interface changes contract-first and update release notes/versioning for every affected client.
+- Keep every SDK under `clients/<language>/` and preserve the single root `.zpkg.toml` / `.zpkg.lock` release set; do not add nested client locks.
+- Treat `zed-pkg/zed-interfaces` as the Rust and WebAssembly contract source. Do not duplicate or weaken those types to make a local build pass.
+- Refuse registry redirects, never forward registry bearer tokens to third-party artifact URLs, cap response bodies, and verify artifact SHA-256 before return.
+- Do not claim operation parity that a client does not implement. Keep the README matrix and fleet parity issue accurate.
+- Pin GitHub Actions by immutable commit SHA and keep workflow permissions read-only unless a write is essential and documented.
+- Resolve conflicts by preserving the contract, security invariants, and release topology. Never accept an entire side merely because it is newer.
+
+## Reproducible validation
+
+Use the pinned development shell instead of mutable globally installed toolchains:
+
+```sh
+nix develop -c agent-check
+```
+
+Rust and WebAssembly validation requires `zed-interfaces` as a sibling checkout:
+
+```text
+workspace/
+├── zed-clients/
+└── zed-interfaces/
+```
+
+Focused stages such as `nix develop -c agent-check go` are suitable while iterating, but the default complete command is required before merge. Keep package-manager lock files and the root `flake.lock` committed when they belong to the repository's release model.
 
 ## Pinned development environment
 

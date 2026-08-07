@@ -1,0 +1,33 @@
+name: audit dart format
+
+on:
+  push:
+    branches:
+      - alexanderdmills/den-359-zed-clients-nix-agent-shell
+    paths:
+      - .github/workflows/audit-dart-format.yml
+      - clients/dart/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          show-progress: false
+      - uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260
+        with:
+          sdk: 3.11.4
+      - name: Emit the canonical Dart 3.11.4 formatting diff
+        working-directory: clients/dart
+        run: |
+          dart --disable-analytics
+          dart format lib test
+          git diff --no-ext-diff -- lib test
+          git diff --quiet -- lib test
