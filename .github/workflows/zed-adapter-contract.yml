@@ -1,0 +1,49 @@
+name: Zed adapter contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-current-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out clients source
+        uses: actions/checkout@v4
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Check out current certified Zed CLI
+        uses: actions/checkout@v4
+        with:
+          repository: zed-pkg/zed-cli
+          ref: 5d1d13119be5784f545a7d812cdfaae3ca120693
+          path: zed-cli
+          persist-credentials: false
+
+      - name: Check out matching interfaces contract
+        uses: actions/checkout@v4
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: 92f046e393e7b421e9eea1afcc6c028ff8eb5859
+          path: zed-interfaces
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate adapter declarations
+        working-directory: source
+        run: python scripts/validate_zed_adapters.py
+
+      - name: Pack every target against the current contract
+        working-directory: source
+        run: cargo run --quiet --locked --manifest-path ../zed-cli/Cargo.toml -- pack --out "$RUNNER_TEMP/zed-pack"
