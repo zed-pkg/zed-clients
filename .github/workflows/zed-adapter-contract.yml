@@ -46,4 +46,4 @@ jobs:
 
       - name: Pack every target against the current contract
         working-directory: source
-        run: cargo run --quiet --locked --manifest-path ../zed-cli/Cargo.toml -- pack --out "$RUNNER_TEMP/zed-pack"
+        run: cargo run --quiet --locked --manifest-path ../zed-cli/Cargo.toml --bin zed -- pack --out "$RUNNER_TEMP/zed-pack"
