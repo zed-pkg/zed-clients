@@ -10,7 +10,7 @@ repository = "https://github.com/zed-pkg/zed-clients"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-zed-interfaces = { path = "../../../zed-interfaces" }
+zed-interfaces = { path = "../../../zed-interfaces/src/rust" }
 hex = "0.4"
 js-sys = "0.3"
 percent-encoding = "2"
