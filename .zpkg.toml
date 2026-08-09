@@ -15,7 +15,6 @@ dir = ".vendor/.zed"
 
 [dependencies]
 "zed-pkg/zed-interfaces" = "^0.1.0"
-"zed-pkg/zed-lib" = "^0.1.0"
 
 [publish]
 include_readme = true
@@ -33,12 +32,12 @@ adapter = "node"
 
 [targets.python]
 dir = "clients/python"
-adapter = "python"
+adapter = "none"
 
 [targets.golang]
-dir = "clients/golang"
+dir = "clients/go"
 name = "zed-clients-golang"
-adapter = "go"
+adapter = "none"
 
 [targets.golang.native]
 registry = "go-modules"
@@ -47,7 +46,7 @@ tag_format = "clients/go/v{version}"
 
 [targets.rust]
 dir = "clients/rust"
-adapter = "rust"
+adapter = "none"
 
 [targets.rust-wasm]
 dir = "clients/wasm"
@@ -56,7 +55,7 @@ adapter = "node"
 
 [targets.dart]
 dir = "clients/dart"
-adapter = "dart"
+adapter = "none"
 
 [targets.gleam]
 dir = "clients/gleam"
@@ -98,6 +97,7 @@ adapter = "none"
 
 [targets.swift]
 dir = "clients/swift"
+adapter = "none"
 
 [targets.gleamlang]
 dir = "clients/gleamlang"
