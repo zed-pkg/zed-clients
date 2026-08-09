@@ -260,8 +260,7 @@
               inherit pkgs agentCheck;
               toolchain = stageToolchainFor pkgs stage;
               swiftCompiler = if stage == "swift" || stage == "toolchains" then runtime.swift else null;
-              swiftRuntime =
-                if stage == "swift" || stage == "toolchains" then runtime.swiftRuntime else [ ];
+              swiftRuntime = if stage == "swift" || stage == "toolchains" then runtime.swiftRuntime else [ ];
             }
           );
         in
