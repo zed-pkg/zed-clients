@@ -130,8 +130,17 @@ jobs:
             clients/wasm/Cargo.lock \
             tests/native-lock-consumer/Cargo.lock
           git diff --cached --check
-          changed="$(git diff --cached --name-only | paste -sd ' ' -)"
-          expected='.github/workflows/agent-polyglot-interface-lock-fix.yml .nix/agent-check.sh clients/rust/Cargo.lock clients/wasm/Cargo.lock flake.nix tests/native-lock-consumer/Cargo.lock'
-          test "$changed" = "$expected"
+          git diff --cached --name-only | LC_ALL=C sort > /tmp/changed-files
+          cat > /tmp/expected-files <<'EOF'
+          .github/workflows/agent-polyglot-interface-lock-fix.yml
+          .nix/agent-check.sh
+          clients/rust/Cargo.lock
+          clients/wasm/Cargo.lock
+          flake.nix
+          tests/native-lock-consumer/Cargo.lock
+          EOF
+          sed -i 's/^          //' /tmp/expected-files
+          LC_ALL=C sort -o /tmp/expected-files /tmp/expected-files
+          diff -u /tmp/expected-files /tmp/changed-files
           git commit -m 'fix: align client locks and Nix gates with polyglot interfaces'
           git push origin HEAD:fix/interfaces-path-after-polyglot
