@@ -90,7 +90,7 @@ jobs:
           path.write_text(source.replace(old_swift, new_swift, 1), encoding='utf-8')
           PY
 
-          nixfmt flake.nix
+          nix develop --no-update-lock-file .#preflight -c nixfmt flake.nix
           cargo generate-lockfile --manifest-path clients/rust/Cargo.toml
           cargo generate-lockfile --manifest-path clients/wasm/Cargo.toml
           cargo generate-lockfile --manifest-path tests/native-lock-consumer/Cargo.toml
@@ -113,9 +113,9 @@ jobs:
 
           cargo run --locked --manifest-path tests/native-lock-consumer/Cargo.toml
 
-          nixfmt --check flake.nix .nix/dev-shell.nix
-          shellcheck .nix/agent-check.sh
-          shfmt -i 2 -ci -d .nix/agent-check.sh
+          nix develop --no-update-lock-file .#preflight -c nixfmt --check flake.nix .nix/dev-shell.nix
+          nix develop --no-update-lock-file .#preflight -c shellcheck .nix/agent-check.sh
+          nix develop --no-update-lock-file .#preflight -c shfmt -i 2 -ci -d .nix/agent-check.sh
           nix flake check --no-update-lock-file --show-trace
           nix develop --no-update-lock-file .#preflight -c agent-check preflight
           nix develop --no-update-lock-file .#swift -c agent-check swift
