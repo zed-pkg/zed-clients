@@ -22,12 +22,6 @@ EXPECTED = {
     "ruby": "none",
     "php": "none",
     "swift": "none",
-    "gleamlang": "none",
-    "python3": "none",
-    "typescript-nodejs": "node",
-    "typescript-deno": "none",
-    "typescript-bun": "node",
-    "typescript-edge": "none",
 }
 
 
