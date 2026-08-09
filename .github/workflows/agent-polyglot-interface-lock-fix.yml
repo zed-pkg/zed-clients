@@ -60,33 +60,28 @@ jobs:
 
           path = Path('.nix/agent-check.sh')
           source = path.read_text(encoding='utf-8')
-          old_checkout = '''  if [[ ! -f "$interfaces_root/Cargo.toml" ]]; then
-              printf '%s\n' \
-                'Rust and WASM checks require zed-pkg/zed-interfaces as a sibling checkout:' \
-                "  expected: $interfaces_root/Cargo.toml" >&2
-              return 1
-            fi'''
-          new_checkout = '''  if [[ ! -f "$interfaces_root/src/rust/Cargo.toml" ]]; then
-              printf '%s\n' \
-                'Rust and WASM checks require the polyglot zed-interfaces Rust slice as a sibling checkout:' \
-                "  expected: $interfaces_root/src/rust/Cargo.toml" >&2
-              return 1
-            fi'''
-          if source.count(old_checkout) != 1:
-              raise SystemExit('expected one legacy interface checkout guard')
-          source = source.replace(old_checkout, new_checkout, 1)
 
-          old_swift = '''        "$SWIFT_EXEC" --version
-                  swift test --parallel'''
-          new_swift = '''        "$SWIFT_EXEC" --version
-                  swift build
+          old_path = '$interfaces_root/Cargo.toml'
+          new_path = '$interfaces_root/src/rust/Cargo.toml'
+          if source.count(old_path) != 2:
+              raise SystemExit('expected two legacy interface manifest paths')
+          source = source.replace(old_path, new_path)
+
+          old_message = 'Rust and WASM checks require zed-pkg/zed-interfaces as a sibling checkout:'
+          new_message = 'Rust and WASM checks require the polyglot zed-interfaces Rust slice as a sibling checkout:'
+          if source.count(old_message) != 1:
+              raise SystemExit('expected one legacy interface checkout message')
+          source = source.replace(old_message, new_message, 1)
+
+          old_swift = '        swift test --parallel'
+          new_swift = '''        swift build
                   if [[ "$(uname -s)" == "Darwin" ]]; then
                     swift test --parallel
                   else
                     printf 'Swift XCTest is unavailable in the pinned Linux toolchain; build succeeded.\n'
                   fi'''
           if source.count(old_swift) != 1:
-              raise SystemExit('expected one unconditional Swift test block')
+              raise SystemExit('expected one unconditional Swift test command')
           path.write_text(source.replace(old_swift, new_swift, 1), encoding='utf-8')
           PY
 
