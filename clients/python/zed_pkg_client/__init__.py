@@ -39,6 +39,18 @@ def _is_loopback_host(host: str) -> bool:
         return False
 
 
+def _internal_host_allowed(host: str) -> bool:
+    host = host.lower().strip("[]")
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+        return address.is_loopback or address.is_private or address.is_link_local
+    except ValueError:
+        return ("." not in host or host.endswith(".svc.cluster.local")
+                or host.endswith(".internal"))
+
+
 def _download_limit(size: int) -> int:
     if size and size > 0:
         return min(size + _DOWNLOAD_SLACK, MAX_ARTIFACT_BYTES)
@@ -94,7 +106,12 @@ def artifact_path(sha256: str) -> str:
     return f"/v1/artifacts/{_quote(sha256, 'sha256')}"
 
 
-def _normalize_registry_url(raw: str) -> str:
+def _normalize_registry_url(
+    raw: str,
+    *,
+    credentialed: bool = False,
+    allow_insecure_transport: bool = False,
+) -> str:
     parsed = urllib.parse.urlsplit(raw.strip())
     if (
         parsed.scheme not in {"http", "https"}
@@ -107,6 +124,12 @@ def _normalize_registry_url(raw: str) -> str:
         raise ValueError(
             "registry_url must be a credential-free absolute HTTP(S) URL "
             "without query or fragment"
+        )
+    if (credentialed and parsed.scheme == "http"
+            and not _internal_host_allowed(parsed.hostname)
+            and not allow_insecure_transport):
+        raise ValueError(
+            f"refusing cleartext HTTP to public host {parsed.hostname!r} while carrying a token"
         )
     for index, encoded_segment in enumerate(parsed.path.split("/"), start=1):
         if not encoded_segment:
@@ -224,9 +247,14 @@ class ZedClient:
         token: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT,
         opener: Optional[urllib.request.OpenerDirector] = None,
+        allow_insecure_transport: bool = False,
     ) -> None:
-        self.base = _normalize_registry_url(registry_url)
         self.token = token.strip() if token and token.strip() else None
+        self.base = _normalize_registry_url(
+            registry_url,
+            credentialed=self.token is not None,
+            allow_insecure_transport=allow_insecure_transport,
+        )
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be a positive finite number")
         self.timeout = timeout

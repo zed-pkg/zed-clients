@@ -152,6 +152,29 @@ bool _isLoopbackHost(String host) {
   return address?.isLoopback ?? false;
 }
 
+/// Hosts inside a local trust boundary where bearer credentials may travel
+/// over cleartext for development or in-cluster service discovery.
+bool _internalHostAllowed(String host) {
+  final bare = host.toLowerCase().replaceAll(RegExp(r'^\[|\]$'), '');
+  if (bare.isEmpty || bare == 'localhost' || bare.endsWith('.localhost')) {
+    return true;
+  }
+  final address = InternetAddress.tryParse(bare);
+  if (address != null) {
+    if (address.isLoopback || address.isLinkLocal) return true;
+    final bytes = address.rawAddress;
+    if (bytes.length == 4) {
+      return bytes[0] == 10 ||
+          (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+          (bytes[0] == 192 && bytes[1] == 168);
+    }
+    return bare.startsWith('fc') || bare.startsWith('fd');
+  }
+  return !bare.contains('.') ||
+      bare.endsWith('.svc.cluster.local') ||
+      bare.endsWith('.internal');
+}
+
 /// Enforce the download-url scheme policy: https is always allowed; http only
 /// for loopback hosts or when the registry base is itself http. Query strings
 /// remain allowed for presigned URLs, while userinfo and fragments are refused.
@@ -192,13 +215,27 @@ final class ZedClient {
     String? token,
     http.Client? httpClient,
     Duration timeout = defaultTimeout,
+    bool allowInsecureTransport = false,
   }) {
     if (timeout <= Duration.zero) {
       throw ArgumentError.value(timeout, 'timeout', 'must be positive');
     }
     final normalizedToken = token?.trim();
+    final normalizedBase = normalizeRegistryUrl(registryUrl);
+    final parsedBase = Uri.parse(normalizedBase);
+    if (normalizedToken != null &&
+        normalizedToken.isNotEmpty &&
+        parsedBase.scheme == 'http' &&
+        !_internalHostAllowed(parsedBase.host) &&
+        !allowInsecureTransport) {
+      throw ArgumentError.value(
+        registryUrl,
+        'registryUrl',
+        'refusing cleartext HTTP to a public host while carrying a token',
+      );
+    }
     return ZedClient._(
-      base: normalizeRegistryUrl(registryUrl),
+      base: normalizedBase,
       token: normalizedToken == null || normalizedToken.isEmpty
           ? null
           : normalizedToken,

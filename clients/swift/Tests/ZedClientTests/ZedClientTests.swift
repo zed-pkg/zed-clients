@@ -7,7 +7,7 @@ import XCTest
 
 final class ZedClientTests: XCTestCase {
     override func tearDown() {
-        StubURLProtocol.handler = nil
+        StubTransport.handler = nil
         super.tearDown()
     }
 
@@ -36,7 +36,7 @@ final class ZedClientTests: XCTestCase {
 
     func testPublicReadsAndAuthenticatedMutationsUseExactCoreRoutes() async throws {
         let recorder = RequestRecorder()
-        StubURLProtocol.handler = { request in
+        StubTransport.handler = { request in
             recorder.append(request)
             let path = request.url?.path ?? ""
             if path.hasSuffix("/yank") {
@@ -108,7 +108,7 @@ final class ZedClientTests: XCTestCase {
     func testArtifactDownloadNeverCarriesBearerAndVerifiesSHA256() async throws {
         let artifact = Data("abc".utf8)
         let recorder = RequestRecorder()
-        StubURLProtocol.handler = { request in
+        StubTransport.handler = { request in
             recorder.append(request)
             return StubResponse(
                 status: 200,
@@ -143,7 +143,7 @@ final class ZedClientTests: XCTestCase {
     }
 
     func testArtifactMismatchAndInsecureRemoteURLsFailClosed() async throws {
-        StubURLProtocol.handler = { _ in
+        StubTransport.handler = { _ in
             StubResponse(status: 200, body: Data("artifact".utf8))
         }
         let development = try makeClient()
@@ -196,7 +196,7 @@ final class ZedClientTests: XCTestCase {
     func testMultipartPublishPreservesRawBytesAndCoordinate() async throws {
         let artifact = Data([0, 7, 13, 200, 255])
         let recorder = RequestRecorder()
-        StubURLProtocol.handler = { request in
+        StubTransport.handler = { request in
             recorder.append(request)
             return StubResponse(
                 status: 200,
@@ -242,7 +242,7 @@ final class ZedClientTests: XCTestCase {
     }
 
     func testDefaultAPIDiagnosticsHideRemoteBodyButRetainBoundedBody() async throws {
-        StubURLProtocol.handler = { _ in
+        StubTransport.handler = { _ in
             StubResponse(
                 status: 403,
                 body: Data(
@@ -352,7 +352,7 @@ func testAuthenticatedOperationsRequireTokenBeforeTransport() async throws {
         try ZedClient(
             registryURL: "http://127.0.0.1\(basePath)",
             token: token,
-            protocolClasses: [StubURLProtocol.self]
+            dataLoader: StubTransport.load
         )
     }
 }
@@ -387,34 +387,32 @@ private final class RequestRecorder: @unchecked Sendable {
     }
 }
 
-private final class StubURLProtocol: URLProtocol {
+private enum StubTransport {
     static var handler: ((URLRequest) throws -> StubResponse)?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        do {
-            let handler = try XCTUnwrap(Self.handler)
-            let stub = try handler(request)
-            let response = try XCTUnwrap(
-                HTTPURLResponse(
-                    url: try XCTUnwrap(request.url),
-                    statusCode: stub.status,
-                    httpVersion: "HTTP/1.1",
-                    headerFields: stub.headers
-                )
-            )
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: stub.body)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
+    static func load(
+        _ request: URLRequest,
+        _ successLimit: Int,
+        _ errorLimit: Int
+    ) async throws -> (Data, HTTPURLResponse) {
+        let handler = try XCTUnwrap(Self.handler)
+        let stub = try handler(request)
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: try XCTUnwrap(request.url),
+            statusCode: stub.status,
+            httpVersion: "HTTP/1.1",
+            headerFields: stub.headers
+        ))
+        let successful = (200..<300).contains(stub.status)
+        let limit = successful ? successLimit : errorLimit
+        let declared = stub.headers.first { key, _ in
+            key.caseInsensitiveCompare("Content-Length") == .orderedSame
+        }.flatMap { Int($0.value) }
+        if successful && (declared ?? stub.body.count) > limit {
+            throw ZedClientError.responseTooLarge(limit: limit)
         }
+        return (Data(stub.body.prefix(limit)), response)
     }
-
-    override func stopLoading() { }
 }
 
 private func bodyData(_ request: URLRequest) throws -> Data {

@@ -1,0 +1,71 @@
+name: certify ABI-matched Swift 6.1.3 environment
+
+on:
+  push:
+    branches:
+      - alexanderdmills/den-359-zed-clients-nix-agent-shell-v5
+    paths:
+      - flake.nix
+      - flake.lock
+      - .nix/dev-shell.nix
+      - .nix/swift-release.nix
+      - .github/workflows/certify-swift-compat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  certify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: alexanderdmills/den-359-zed-clients-nix-agent-shell-v5
+          path: zed-clients
+          persist-credentials: true
+          show-progress: false
+          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: 6e893ad0f28ccfbb7722f007d75e88548f1bcfdf
+          path: zed-interfaces
+          persist-credentials: false
+          show-progress: false
+      - uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Lock and format both immutable Nixpkgs inputs
+        working-directory: zed-clients
+        run: |
+          set -euo pipefail
+          nix flake lock --update-input swift-compat
+          nix shell nixpkgs#nixfmt -c nixfmt \
+            flake.nix \
+            .nix/dev-shell.nix \
+            .nix/swift-release.nix
+          nix-instantiate --parse flake.nix >/dev/null
+          git diff --check
+      - name: Certify the exact official Swift stage
+        working-directory: zed-clients
+        run: |
+          set -euo pipefail
+          nix develop --no-update-lock-file .#swift -c swift --version
+          nix develop --no-update-lock-file .#swift -c agent-check swift
+      - name: Commit immutable lock and canonical Nix layout
+        working-directory: zed-clients
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            flake.nix \
+            flake.lock \
+            .nix/dev-shell.nix \
+            .nix/swift-release.nix
+          git diff --cached --check
+          git commit -m 'build: pin ABI-matched Swift 6.1.3 environment'
+          git push origin HEAD:alexanderdmills/den-359-zed-clients-nix-agent-shell-v5
