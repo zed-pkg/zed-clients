@@ -1,3 +1,4 @@
+.cache/
 target/
 node_modules/
 dist/
@@ -8,6 +9,9 @@ _build/
 build/
 .dart_tool/
 clients/dart/pubspec.lock
+clients/elixir/deps/
+clients/elixir/mix.lock
+clients/swift/.build/
 clients/wasm/pkg/
 .cache/nix-agent/
 tmp

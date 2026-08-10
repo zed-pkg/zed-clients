@@ -210,6 +210,19 @@ func (c *Client) String() string {
 	return fmt.Sprintf("ZedClient(base=%s, token=[REDACTED])", c.Base)
 }
 
+func internalHostAllowed(host string) bool {
+	host = strings.ToLower(strings.Trim(host, "[]"))
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+	return !strings.Contains(host, ".") ||
+		strings.HasSuffix(host, ".svc.cluster.local") ||
+		strings.HasSuffix(host, ".internal")
+}
+
 func normalizeRegistryURL(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	parsed, err := url.Parse(trimmed)
@@ -243,7 +256,18 @@ func (c *Client) normalizedBase() (string, error) {
 	if c == nil {
 		return "", errors.New("zed client is nil")
 	}
-	return normalizeRegistryURL(c.Base)
+	base, err := normalizeRegistryURL(c.Base)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(c.Token) != "" && parsed.Scheme == "http" && !internalHostAllowed(parsed.Hostname()) {
+		return "", fmt.Errorf("refusing cleartext HTTP to public host %q while carrying a token", parsed.Hostname())
+	}
+	return base, nil
 }
 
 func (c *Client) hardenedHTTPClient() (*http.Client, error) {

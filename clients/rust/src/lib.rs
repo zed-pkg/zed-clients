@@ -128,6 +128,8 @@ pub enum Error {
     },
     #[error("invalid registry base URL")]
     InvalidBaseUrl,
+    #[error("refusing cleartext HTTP to a public host while carrying a token")]
+    InsecureTransport,
     #[error("invalid client input: {0}")]
     InvalidInput(String),
     #[error("authenticated registry operation requires a nonblank bearer token")]
@@ -153,6 +155,25 @@ pub struct Client {
     token: Option<String>,
     max_response_bytes: u64,
     http: reqwest::blocking::Client,
+}
+
+fn cleartext_internal_host_allowed(host: &str) -> bool {
+    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
+    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return match ip {
+            std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+            std::net::IpAddr::V6(ip) => {
+                let bytes = ip.octets();
+                ip.is_loopback()
+                    || bytes[0] & 0xfe == 0xfc
+                    || (bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80)
+            }
+        };
+    }
+    !host.contains('.') || host.ends_with(".svc.cluster.local") || host.ends_with(".internal")
 }
 
 impl fmt::Debug for Client {
@@ -215,6 +236,12 @@ impl Client {
         let token = self.token.as_deref().ok_or(Error::MissingToken)?;
         if token.chars().any(char::is_control) {
             return Err(invalid_input("token must not contain control characters"));
+        }
+        let parsed = reqwest::Url::parse(&self.base).map_err(|_| Error::InvalidBaseUrl)?;
+        if parsed.scheme() == "http"
+            && !cleartext_internal_host_allowed(parsed.host_str().unwrap_or_default())
+        {
+            return Err(Error::InsecureTransport);
         }
         Ok(token)
     }

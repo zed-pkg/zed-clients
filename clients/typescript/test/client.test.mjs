@@ -215,6 +215,8 @@ test("explicit HTTP development registries may use another HTTP artifact host", 
   let seenUrl;
   const client = new ZedClient({
     registryUrl: "http://registry.dev/gateway",
+    // Cleartext to a public host now needs saying so out loud.
+    allowInsecureTransport: true,
     fetchImpl: async (url) => {
       seenUrl = String(url);
       return new Response(body, { status: 200 });
@@ -275,4 +277,35 @@ test("download allows loopback HTTP and enforces streamed and declared caps", as
       ),
     (error) => error instanceof ZedApiError && error.code === "artifact_too_large",
   );
+});
+
+test("a cleartext registry on a public host is refused unless opted into", () => {
+  for (const registryUrl of ["http://registry.dev", "http://8.8.8.8"]) {
+    assert.throws(
+      () => new ZedClient({ registryUrl }),
+      /refusing cleartext http:\/\/ to public host/,
+      registryUrl,
+    );
+    assert.ok(new ZedClient({ registryUrl, allowInsecureTransport: true }), registryUrl);
+  }
+});
+
+test("credentials in the registry URL stay refused even with the opt-in", () => {
+  // The pre-existing credential-free rule runs first and is not weakened by
+  // allowInsecureTransport, which only concerns the scheme.
+  for (const opts of [{}, { allowInsecureTransport: true }]) {
+    assert.throws(
+      () => new ZedClient({ registryUrl: "http://user@evil.test", ...opts }),
+      /credential-free/,
+    );
+  }
+});
+
+test("loopback and in-cluster registries need no opt-in", () => {
+  for (const registryUrl of [
+    "https://registry.zpkg.tech", "http://localhost:8080", "http://127.0.0.1:8080",
+    "http://10.0.0.5", "http://registry", "http://r.svc.cluster.local",
+  ]) {
+    assert.ok(new ZedClient({ registryUrl }), registryUrl);
+  }
 });

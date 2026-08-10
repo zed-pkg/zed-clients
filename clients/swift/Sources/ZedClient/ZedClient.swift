@@ -149,6 +149,12 @@ private struct ErrorEnvelope: Decodable {
     let code: String?
 }
 
+typealias DataLoader = (
+    URLRequest,
+    Int,
+    Int
+) async throws -> (Data, HTTPURLResponse)
+
 private final class BoundedDataDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     typealias ResultValue = Result<(Data, HTTPURLResponse), Error>
 
@@ -260,7 +266,7 @@ public final class ZedClient: @unchecked Sendable {
 
     let baseURL: URL
     private let token: String?
-    private let protocolClasses: [AnyClass]?
+    private let dataLoader: DataLoader?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -270,17 +276,17 @@ public final class ZedClient: @unchecked Sendable {
     ) throws {
         self.baseURL = try Self.validateBaseURL(registryURL)
         self.token = Self.normalizeOptional(token)
-        self.protocolClasses = nil
+        self.dataLoader = nil
     }
 
     init(
         registryURL: String,
         token: String?,
-        protocolClasses: [AnyClass]?
+        dataLoader: DataLoader?
     ) throws {
         self.baseURL = try Self.validateBaseURL(registryURL)
         self.token = Self.normalizeOptional(token)
-        self.protocolClasses = protocolClasses
+        self.dataLoader = dataLoader
     }
 
     public func getPackage(org: String, name: String) async throws -> PackageMetadata {
@@ -447,13 +453,15 @@ public final class ZedClient: @unchecked Sendable {
         successLimit: Int,
         errorLimit: Int
     ) async throws -> (Data, HTTPURLResponse) {
-        try await withCheckedThrowingContinuation { continuation in
+        if let dataLoader {
+            return try await dataLoader(request, successLimit, errorLimit)
+        }
+        return try await withCheckedThrowingContinuation { continuation in
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = Self.timeout
             configuration.timeoutIntervalForResource = Self.timeout
             configuration.httpShouldSetCookies = false
             configuration.httpCookieAcceptPolicy = .never
-            configuration.protocolClasses = protocolClasses
 
             let delegate = BoundedDataDelegate(
                 successLimit: successLimit,

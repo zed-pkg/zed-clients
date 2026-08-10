@@ -3,6 +3,7 @@
 //// without a network.
 
 import gleam/bit_array
+import gleam/bool
 import gleam/crypto
 import gleam/dynamic/decode
 import gleam/http
@@ -11,6 +12,7 @@ import gleam/http/response.{type Response}
 import gleam/httpc
 import gleam/int
 import gleam/json
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
@@ -61,6 +63,7 @@ pub type ClientError {
   Sha256Mismatch(expected: String, actual: String)
   ArtifactTooLarge(limit: Int)
   InsecureDownloadUrl(message: String)
+  InsecureTransport(message: String)
 }
 
 /// Injectable transport used for deterministic tests and alternate runtimes.
@@ -431,11 +434,57 @@ fn authorize(
   }
 }
 
+fn internal_host_allowed(host: String) -> Bool {
+  let host = string.lowercase(host)
+  let octets = string.split(host, ".") |> list.map(int.parse)
+  let private_v4 = case octets {
+    [Ok(a), Ok(b), Ok(_), Ok(_)] ->
+      a == 127
+      || a == 10
+      || { a == 172 && b >= 16 && b <= 31 }
+      || { a == 192 && b == 168 }
+      || { a == 169 && b == 254 }
+    _ -> False
+  }
+  host == ""
+  || host == "localhost"
+  || string.ends_with(host, ".localhost")
+  || host == "::1"
+  || string.starts_with(host, "fc")
+  || string.starts_with(host, "fd")
+  || string.starts_with(host, "fe8")
+  || private_v4
+  || !string.contains(host, ".")
+  || string.ends_with(host, ".svc.cluster.local")
+  || string.ends_with(host, ".internal")
+}
+
+fn credential_transport_ok(client: Client) -> Bool {
+  case client.token {
+    None -> True
+    Some(_) ->
+      case uri.parse(client.base) {
+        Ok(parsed) ->
+          case parsed.scheme, parsed.host {
+            Some("http"), Some(host) -> internal_host_allowed(host)
+            _, _ -> True
+          }
+        Error(_) -> True
+      }
+  }
+}
+
 fn send(
   client: Client,
   req: Request(BitArray),
 ) -> Result(Response(BitArray), ClientError) {
   use _ <- result.try(ensure_configured(client))
+  use <- bool.guard(
+    when: !credential_transport_ok(client),
+    return: Error(InsecureTransport(
+      message: "refusing cleartext HTTP to a public registry host while carrying a token",
+    )),
+  )
   client.transport(req, client.timeout_ms)
   |> result.map_error(fn(error) { TransportError(error: error) })
 }

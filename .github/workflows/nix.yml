@@ -73,10 +73,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zed-pkg/zed-interfaces
-          ref: 5f15f1f2686199924b3e32e7ef8e6a85434bca3e
+          ref: 5394b2e7b070354ee79a4c6ac79c26d6264970cd
           path: zed-interfaces
           persist-credentials: false
           show-progress: false
+
+      - name: Verify polyglot interface layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C zed-interfaces rev-parse HEAD)" = 5394b2e7b070354ee79a4c6ac79c26d6264970cd
+          test -f zed-interfaces/src/rust/Cargo.toml
 
       - name: Install Nix
         uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342

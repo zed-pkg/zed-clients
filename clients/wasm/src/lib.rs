@@ -136,6 +136,35 @@ fn download_limit(size: u64) -> u64 {
     }
 }
 
+fn internal_host_allowed(host: &str) -> bool {
+    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
+    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return match ip {
+            std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+            std::net::IpAddr::V6(ip) => {
+                let bytes = ip.octets();
+                ip.is_loopback()
+                    || bytes[0] & 0xfe == 0xfc
+                    || (bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80)
+            }
+        };
+    }
+    !host.contains('.') || host.ends_with(".svc.cluster.local") || host.ends_with(".internal")
+}
+
+fn cleartext_base_host(base: &str) -> Option<&str> {
+    let rest = base.strip_prefix("http://")?;
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host_port = authority.rsplit('@').next().unwrap_or(authority);
+    if let Some(v6) = host_port.strip_prefix('[') {
+        return Some(v6.split(']').next().unwrap_or(v6));
+    }
+    Some(host_port.split(':').next().unwrap_or(host_port))
+}
+
 fn allowed_download_url(raw: &str, base: &str) -> Result<String, String> {
     let url = url::Url::parse(raw).map_err(|error| format!("bad download URL: {error}"))?;
     if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
@@ -376,6 +405,13 @@ impl ZedClient {
     async fn send(&self, request: Request, authorized: bool) -> Result<TimedResponse, JsValue> {
         self.ensure_configured()?;
         if authorized {
+            if let Some(host) = cleartext_base_host(&self.base) {
+                if !internal_host_allowed(host) {
+                    return Err(js_error(
+                        "refusing cleartext HTTP to a public registry host while carrying a token",
+                    ));
+                }
+            }
             request.headers().set(
                 "authorization",
                 &format!("Bearer {}", self.require_token()?),

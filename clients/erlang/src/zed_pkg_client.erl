@@ -24,6 +24,7 @@
     encode_segment/1,
     download_limit/1,
     allowed_download_url/2,
+    credential_transport_ok/2,
     verify_sha256/2,
     multipart_body/4
 ]).
@@ -655,7 +656,59 @@ auth_headers(_Client, true) ->
 auth_headers(_Client, false) ->
     {ok, []}.
 
+internal_host_allowed(Host0) ->
+    Host = string:lowercase(string:trim(Host0, both, "[]")),
+    case Host of
+        "" -> true;
+        "localhost" -> true;
+        "::1" -> true;
+        _ ->
+            lists:suffix(".localhost", Host)
+                orelse lists:prefix("fc", Host)
+                orelse lists:prefix("fd", Host)
+                orelse private_ipv4(Host)
+                orelse nomatch =:= string:find(Host, ".")
+                orelse lists:suffix(".svc.cluster.local", Host)
+                orelse lists:suffix(".internal", Host)
+    end.
+
+private_ipv4(Host) ->
+    case inet:parse_ipv4strict_address(Host) of
+        {ok, {127, _, _, _}} -> true;
+        {ok, {10, _, _, _}} -> true;
+        {ok, {172, B, _, _}} when B >= 16, B =< 31 -> true;
+        {ok, {192, 168, _, _}} -> true;
+        {ok, {169, 254, _, _}} -> true;
+        _ -> false
+    end.
+
+credential_transport_ok(Client, Headers) ->
+    case lists:keymember("authorization", 1, Headers) of
+        false -> ok;
+        true ->
+            Base = binary_to_list(maps:get(base, Client, <<>>)),
+            case uri_string:parse(Base) of
+                #{scheme := <<"http">>, host := Host} ->
+                    case internal_host_allowed(binary_to_list(Host)) of
+                        true -> ok;
+                        false -> {error, {insecure_transport, Host}}
+                    end;
+                #{scheme := "http", host := Host} when is_list(Host) ->
+                    case internal_host_allowed(Host) of
+                        true -> ok;
+                        false -> {error, {insecure_transport, list_to_binary(Host)}}
+                    end;
+                _ -> ok
+            end
+    end.
+
 http_request(Client, Method, Url, Headers0, Payload) ->
+    case credential_transport_ok(Client, Headers0) of
+        ok -> http_request_checked(Client, Method, Url, Headers0, Payload);
+        Error -> Error
+    end.
+
+http_request_checked(Client, Method, Url, Headers0, Payload) ->
     case client_timeout(Client) of
         {ok, Timeout} ->
             _ = application:ensure_all_started(inets),
