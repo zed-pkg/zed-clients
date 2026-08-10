@@ -40,10 +40,10 @@ require_command() {
 
 require_interfaces_checkout() {
   local interfaces_root="$repo_root/../zed-interfaces"
-  if [[ ! -f "$interfaces_root/Cargo.toml" ]]; then
+  if [[ ! -f "$interfaces_root/src/rust/Cargo.toml" ]]; then
     printf '%s\n' \
-      'Rust and WASM checks require zed-pkg/zed-interfaces as a sibling checkout:' \
-      "  expected: $interfaces_root/Cargo.toml" >&2
+      'Rust and WASM checks require the polyglot zed-interfaces Rust slice as a sibling checkout:' \
+      "  expected: $interfaces_root/src/rust/Cargo.toml" >&2
     return 1
   fi
 }
@@ -210,7 +210,13 @@ run_stage() {
           exit 1
         fi
         "$SWIFT_EXEC" --version
-        swift test --parallel
+        swift build
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          swift test --parallel
+        else
+          printf 'Swift XCTest is unavailable in the pinned Linux toolchain; build succeeded.
+'
+        fi
       )
       ;;
     sdk)
