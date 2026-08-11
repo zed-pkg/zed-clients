@@ -124,6 +124,28 @@ def write_text(path: Path, content: str, changed: list[str], *, missing_only: bo
     changed.append(path.as_posix())
 
 
+def write_generated_text(
+    path: Path,
+    content: str,
+    changed: list[str],
+    *,
+    previous_templates: tuple[str, ...] = (),
+) -> None:
+    """Create a scaffold or migrate only an exact older generated template.
+
+    Hand-maintained runtime files remain untouched.  This gives the nightly
+    hardener a narrow, reviewable migration path when a toolchain removes an API
+    used by a template that earlier fleet runs may already have materialized.
+    """
+
+    if path.exists():
+        previous = path.read_text(encoding="utf-8")
+        allowed = {clean(template) for template in previous_templates}
+        if previous != clean(content) and previous not in allowed:
+            return
+    write_text(path, content, changed)
+
+
 def write_json(path: Path, value: Any, changed: list[str], *, missing_only: bool = False) -> None:
     write_text(
         path,
@@ -447,6 +469,59 @@ def choose_dir(root: Path, spec: TargetSpec, manifest_targets: dict[str, Any]) -
     return canonical
 
 
+def choose_target_dirs(root: Path, manifest_targets: dict[str, Any]) -> dict[str, Path]:
+    """Choose one isolated source root for every canonical target.
+
+    Older client manifests can expose several runtime aliases from one source
+    directory (most commonly the shared ``clients/typescript`` package).  The
+    current Zed manifest contract requires every target to own a distinct source
+    root.  Preserve the first compatible legacy package, then materialize any
+    colliding runtime at its deterministic canonical directory.
+
+    Canonical directories are reserved for their owning target so a malformed
+    legacy manifest cannot make an earlier target claim a later target's repair
+    location.
+    """
+
+    repository_root = root.resolve()
+    reserved = {
+        (root / spec.canonical_dir).resolve(): spec.name
+        for spec in TARGETS
+    }
+    claimed: set[Path] = set()
+    selected: dict[str, Path] = {}
+    for spec in TARGETS:
+        preferred = choose_dir(root, spec, manifest_targets)
+        resolved = preferred.resolve()
+        if not resolved.is_relative_to(repository_root):
+            preferred = root / spec.canonical_dir
+            resolved = preferred.resolve()
+        if not resolved.is_relative_to(repository_root):
+            raise ValueError(f"target directory escapes repository for {spec.name}: {preferred}")
+        reserved_for = reserved.get(resolved)
+        if resolved in claimed or (reserved_for is not None and reserved_for != spec.name):
+            preferred = root / spec.canonical_dir
+            resolved = preferred.resolve()
+        if not resolved.is_relative_to(repository_root):
+            raise ValueError(f"target directory escapes repository for {spec.name}: {preferred}")
+        if resolved in claimed:
+            raise ValueError(f"canonical target directory collision for {spec.name}: {preferred}")
+        claimed.add(resolved)
+        selected[spec.name] = preferred
+    return selected
+
+
+def merge_missing_table(current: dict[str, Any], legacy: dict[str, Any]) -> None:
+    """Deep-merge missing legacy metadata while canonical values win conflicts."""
+
+    for key, value in legacy.items():
+        existing = current.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merge_missing_table(existing, value)
+        elif key not in current:
+            current[key] = value
+
+
 def marker_dir(root: Path, spec: TargetSpec, target_dir: Path) -> Path:
     shared_typescript = root / "clients/typescript"
     if spec.runtime and target_dir == shared_typescript:
@@ -485,6 +560,17 @@ def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path
 
     for spec in TARGETS:
         current = targets.get(spec.zed_target)
+        for alias in spec.zed_aliases:
+            if alias not in targets:
+                continue
+            legacy = targets.get(alias)
+            if isinstance(legacy, dict):
+                if not isinstance(current, dict):
+                    current = legacy
+                    targets[spec.zed_target] = current
+                else:
+                    merge_missing_table(current, legacy)
+            del targets[alias]
         if not isinstance(current, dict):
             current = tomlkit.table()
             targets[spec.zed_target] = current
@@ -554,14 +640,35 @@ class {cap}Client final {{
 }}
 ''', changed, missing_only=True)
     elif spec.name == "zig":
-        write_text(directory / "build.zig", '''const std = @import("std");
+        legacy_build = '''const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const lib = b.addStaticLibrary(.{ .name = "client", .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
     b.installArtifact(lib);
 }
-''', changed, missing_only=True)
+'''
+        build = '''const std = @import("std");
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const lib = b.addLibrary(.{
+        .name = "client",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.installArtifact(lib);
+}
+'''
+        write_generated_text(
+            directory / "build.zig",
+            build,
+            changed,
+            previous_templates=(legacy_build,),
+        )
         write_text(directory / "src/root.zig", '''pub const Client = struct {
     base_url: []const u8,
     bearer_token: ?[]const u8 = null,
@@ -686,14 +793,38 @@ class Client:
         return bool(self.base_url)
 ''', changed, missing_only=True)
     elif spec.name == "ruby":
-        write_text(directory / f"{package}-client.gemspec", f'''Gem::Specification.new do |spec|
+        legacy_gemspec = f'''Gem::Specification.new do |spec|
   spec.name = "{package}-client"
   spec.version = "0.1.0"
   spec.summary = "Ruby client for {prefix}"
   spec.files = Dir["lib/**/*.rb"]
   spec.required_ruby_version = ">= 3.1"
 end
-''', changed, missing_only=True)
+'''
+        legacy_standardizer_gemspec = f'''Gem::Specification.new do |spec|
+  spec.name = "{package}-client"
+  spec.version = "0.1.0"
+  spec.summary = "Ruby client SDK for {prefix}"
+  spec.files = Dir["lib/**/*.rb"]
+  spec.required_ruby_version = ">= 3.1"
+end
+'''
+        gemspec = f'''Gem::Specification.new do |spec|
+  spec.name = "{package}-client"
+  spec.version = "0.1.0"
+  spec.summary = "Ruby client for {prefix}"
+  spec.authors = ["{org} contributors"]
+  spec.license = "MIT"
+  spec.files = Dir["lib/**/*.rb"]
+  spec.required_ruby_version = ">= 3.1"
+end
+'''
+        write_generated_text(
+            directory / f"{package}-client.gemspec",
+            gemspec,
+            changed,
+            previous_templates=(legacy_gemspec, legacy_standardizer_gemspec),
+        )
         write_text(directory / f"lib/{s}_client.rb", f'''class {cap}Client
   attr_reader :base_url, :bearer_token
   def initialize(base_url:, bearer_token: nil)
@@ -897,6 +1028,27 @@ def verify(root: Path, schema_source: Path) -> list[str]:
         errors.append(f"invalid .zpkg.toml: {exc}")
         return errors
     targets = manifest.get("targets", {})
+    repository_root = root.resolve()
+    target_owners: dict[Path, str] = {}
+    if isinstance(targets, dict):
+        for target_name, target in targets.items():
+            if not isinstance(target, dict) or not isinstance(target.get("dir"), str):
+                continue
+            target_root = (root / target["dir"]).resolve()
+            if not target_root.is_relative_to(repository_root):
+                errors.append(f"target {target_name} source directory escapes repository: {target['dir']!r}")
+                continue
+            previous = target_owners.get(target_root)
+            if previous is not None:
+                errors.append(
+                    f"targets {previous} and {target_name} share source directory {target['dir']!r}"
+                )
+            else:
+                target_owners[target_root] = str(target_name)
+    for spec in TARGETS:
+        for alias in spec.zed_aliases:
+            if alias in targets:
+                errors.append(f"legacy target alias [targets.{alias}] must migrate to [targets.{spec.zed_target}]")
     found = 0
     for spec in TARGETS:
         entry = targets.get(spec.zed_target)
@@ -904,11 +1056,17 @@ def verify(root: Path, schema_source: Path) -> list[str]:
             errors.append(f"missing [targets.{spec.zed_target}]")
             continue
         raw_dir = entry.get("dir")
-        if not isinstance(raw_dir, str) or not (root / raw_dir).is_dir():
+        if not isinstance(raw_dir, str):
+            errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
+            continue
+        directory = (root / raw_dir).resolve()
+        if not directory.is_relative_to(repository_root):
+            errors.append(f"target {spec.zed_target} source directory escapes repository: {raw_dir!r}")
+            continue
+        if not directory.is_dir():
             errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
             continue
         found += 1
-        directory = root / raw_dir
         marker = marker_dir(root, spec, directory)
         digest_path = marker / ".zed-api-surface.sha256"
         contract_path = marker / ".zed-client-contract.json"
@@ -966,7 +1124,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 manifest_targets = raw_targets
         except tomllib.TOMLDecodeError:
             manifest_targets = {}
-    target_dirs = {spec.name: choose_dir(root, spec, manifest_targets) for spec in TARGETS}
+    target_dirs = choose_target_dirs(root, manifest_targets)
     if args.write:
         for spec in TARGETS:
             directory = target_dirs[spec.name]
