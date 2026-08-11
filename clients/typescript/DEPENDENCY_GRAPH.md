@@ -31,14 +31,20 @@ and return `authoritative: false`.
 ## Transport behavior
 
 - Registry base URLs must use HTTP or HTTPS and may not embed credentials,
-  queries, or fragments.
+  queries, or fragments. Cleartext HTTP is limited to loopback/private/in-cluster
+  hosts unless `allowInsecureTransport` is explicitly enabled.
 - Coordinates are encoded as individual URL path segments. Empty, control, and
   dot-segment values are rejected.
 - Bearer credentials are supplied only in the `Authorization` header.
 - Redirect following is disabled so a registry cannot redirect credentials to a
   different origin.
 - Bodies are streamed under a 32 MiB default limit. `maxBytes` can lower or
-  explicitly raise that caller-side bound.
+  explicitly raise that caller-side bound up to 1 GiB.
+- Requests and response streams have a 30-second default deadline. `timeoutMs`
+  can select a positive deadline up to 10 minutes, and a caller `AbortSignal`
+  remains authoritative.
+- Successful responses must carry the requested graph media type, a strong
+  byte ETag, and a canonical SHA-256 semantic graph digest.
 - `If-None-Match` is supported. A `304` result has an empty body while retaining
   ETag and semantic graph-digest metadata.
 - Non-success response bodies are not exposed by `DependencyGraphHttpError`,
