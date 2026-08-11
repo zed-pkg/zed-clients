@@ -15,7 +15,12 @@ const graph = await downloadDependencyGraph({
   token: process.env.ZED_PKG_TOKEN,
 });
 
-console.log(graph.graphDigest, graph.etag, graph.authoritative);
+console.log(
+  graph.graphDigest,
+  graph.etag,
+  graph.authoritative,
+  graph.contentLength,
+);
 await Bun.write(graph.filename, graph.body);
 ```
 
@@ -44,7 +49,9 @@ and return `authoritative: false`.
   can select a positive deadline up to 10 minutes, and a caller `AbortSignal`
   remains authoritative.
 - Successful responses must carry the requested graph media type, a strong
-  byte ETag, and a canonical SHA-256 semantic graph digest.
+  syntactically valid byte ETag, a canonical SHA-256 semantic graph digest,
+  the contract authority classification, and an exact safe `Content-Length`.
+  The SDK rejects a body whose bytes do not match that declared length.
 - `If-None-Match` is supported. A `304` result has an empty body while retaining
   ETag and semantic graph-digest metadata.
 - Non-success response bodies are not exposed by `DependencyGraphHttpError`,

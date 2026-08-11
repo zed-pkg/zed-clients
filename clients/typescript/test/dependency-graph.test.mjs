@@ -161,9 +161,11 @@ test("download sends bounded, redirect-safe, authenticated requests", async () =
   const fetch = async (url, init) => {
     requestUrl = new URL(url);
     requestInit = init;
-    return new Response(new TextEncoder().encode('{"schema":"zpkg/dependency-graph/v1"}'), {
+    const body = new TextEncoder().encode('{"schema":"zpkg/dependency-graph/v1"}');
+    return new Response(body, {
       status: 200,
       headers: {
+        "content-length": String(body.byteLength),
         "content-type": "application/vnd.zpkg.dependency-graph.v1+json5",
         etag: '"bytes-sha256"',
         [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
@@ -196,6 +198,7 @@ test("download sends bounded, redirect-safe, authenticated requests", async () =
   assert.equal(result.graphDigest, graphDigest);
   assert.equal(result.etag, '"bytes-sha256"');
   assert.equal(result.authoritative, true);
+  assert.equal(result.contentLength, result.body.byteLength);
   assert.equal(result.filename, "acme_tools_http_client_2.0.0-beta.1+build.7.dependency-graph.json5");
   assert.match(new TextDecoder().decode(result.body), /dependency-graph/);
 });
@@ -212,6 +215,7 @@ test("304 responses return validators without consuming a body", async () => {
       new Response(null, {
         status: 304,
         headers: {
+          "content-length": "42",
           etag: '"same"',
           [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
           [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "false",
@@ -237,6 +241,7 @@ test("unsolicited 304 responses are rejected", async () => {
         new Response(null, {
           status: 304,
           headers: {
+            "content-length": "42",
             etag: '"same"',
             [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
             [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
@@ -252,6 +257,7 @@ test("304 validators must weakly match the caller's condition", async () => {
     new Response(null, {
       status: 304,
       headers: {
+        "content-length": "42",
         etag: '"current"',
         [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
         [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
@@ -303,6 +309,41 @@ test("streaming and declared body sizes are capped", async () => {
   );
 });
 
+test("successful bodies require an exact safe Content-Length", async () => {
+  const common = {
+    baseUrl: "https://registry.example",
+    org: "acme",
+    name: "pkg",
+    version: "1.0.0",
+    format: "json",
+  };
+  const headers = {
+    "content-type": "application/vnd.zpkg.dependency-graph.v1+json",
+    etag: '"bytes"',
+    [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+    [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
+  };
+
+  await assert.rejects(
+    downloadDependencyGraph({
+      ...common,
+      fetch: async () => new Response("{}", { status: 200, headers }),
+    }),
+    /valid Content-Length/,
+  );
+  await assert.rejects(
+    downloadDependencyGraph({
+      ...common,
+      fetch: async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { ...headers, "content-length": "3" },
+        }),
+    }),
+    /body length does not match Content-Length/,
+  );
+});
+
 test("successful responses require contract media type and validators", async () => {
   await assert.rejects(
     downloadDependencyGraph({
@@ -315,6 +356,7 @@ test("successful responses require contract media type and validators", async ()
         new Response("<html>login</html>", {
           status: 200,
           headers: {
+            "content-length": "18",
             "content-type": "text/html",
             etag: '"bytes"',
             [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
@@ -335,7 +377,29 @@ test("successful responses require contract media type and validators", async ()
         new Response("{}", {
           status: 200,
           headers: {
+            "content-length": "2",
             "content-type": "application/vnd.zpkg.dependency-graph.v1+json",
+          },
+        }),
+    }),
+    /valid strong ETag/,
+  );
+  await assert.rejects(
+    downloadDependencyGraph({
+      baseUrl: "https://registry.example",
+      org: "acme",
+      name: "pkg",
+      version: "1.0.0",
+      format: "json",
+      fetch: async () =>
+        new Response("{}", {
+          status: 200,
+          headers: {
+            "content-length": "2",
+            "content-type": "application/vnd.zpkg.dependency-graph.v1+json",
+            etag: '"has space"',
+            [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+            [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
           },
         }),
     }),
@@ -348,6 +412,7 @@ test("authority metadata is required and must match the shared descriptor", asyn
     new Response("{}", {
       status: 200,
       headers: {
+        "content-length": "2",
         "content-type": "application/vnd.zpkg.dependency-graph.v1+json",
         etag: '"bytes"',
         [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
