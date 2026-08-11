@@ -315,7 +315,7 @@ export async function downloadDependencyGraph(
     const graphDigest = requireGraphDigest(
       response.headers.get(DEPENDENCY_GRAPH_DIGEST_HEADER),
     );
-    const authoritative = parseAuthoritativeHeader(
+    const authoritative = requireAuthoritativeHeader(
       response.headers.get(DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER),
       descriptor.authoritative,
     );
@@ -457,16 +457,28 @@ function requireExpectedMediaType(
   }
 }
 
-function parseAuthoritativeHeader(
+function requireAuthoritativeHeader(
   value: string | null,
-  fallback: boolean,
+  expected: boolean,
 ): boolean {
-  if (value === null) return fallback;
-  if (value.toLowerCase() === "true") return true;
-  if (value.toLowerCase() === "false") return false;
-  throw new TypeError(
-    `invalid ${DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER} response header`,
-  );
+  if (value === null) {
+    throw new TypeError(
+      `missing ${DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER} response header`,
+    );
+  }
+  const normalized = value.toLowerCase();
+  const actual = normalized === "true" ? true : normalized === "false" ? false : null;
+  if (actual === null) {
+    throw new TypeError(
+      `invalid ${DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER} response header`,
+    );
+  }
+  if (actual !== expected) {
+    throw new TypeError(
+      `${DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER} does not match the requested format`,
+    );
+  }
+  return actual;
 }
 
 function dependencyGraphFilename(

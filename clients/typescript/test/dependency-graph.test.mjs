@@ -239,6 +239,7 @@ test("unsolicited 304 responses are rejected", async () => {
           headers: {
             etag: '"same"',
             [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+            [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
           },
         }),
     }),
@@ -253,6 +254,7 @@ test("304 validators must weakly match the caller's condition", async () => {
       headers: {
         etag: '"current"',
         [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+        [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
       },
     });
   const common = {
@@ -293,6 +295,7 @@ test("streaming and declared body sizes are capped", async () => {
             "content-type": "application/vnd.zpkg.dependency-graph.v1+msgpack",
             etag: '"bytes"',
             [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+            [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
           },
         }),
     }),
@@ -315,6 +318,7 @@ test("successful responses require contract media type and validators", async ()
             "content-type": "text/html",
             etag: '"bytes"',
             [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+            [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: "true",
           },
         }),
     }),
@@ -336,6 +340,37 @@ test("successful responses require contract media type and validators", async ()
         }),
     }),
     /valid strong ETag/,
+  );
+});
+
+test("authority metadata is required and must match the shared descriptor", async () => {
+  const response = (authoritative) =>
+    new Response("{}", {
+      status: 200,
+      headers: {
+        "content-type": "application/vnd.zpkg.dependency-graph.v1+json",
+        etag: '"bytes"',
+        [DEPENDENCY_GRAPH_DIGEST_HEADER]: graphDigest,
+        ...(authoritative === undefined
+          ? {}
+          : { [DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER]: authoritative }),
+      },
+    });
+  const common = {
+    baseUrl: "https://registry.example",
+    org: "acme",
+    name: "pkg",
+    version: "1.0.0",
+    format: "json",
+  };
+
+  await assert.rejects(
+    downloadDependencyGraph({ ...common, fetch: async () => response() }),
+    /missing x-zpkg-graph-authoritative/,
+  );
+  await assert.rejects(
+    downloadDependencyGraph({ ...common, fetch: async () => response("false") }),
+    /does not match the requested format/,
   );
 });
 

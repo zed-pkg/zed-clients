@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  ZED_INTERFACES_SHA: b795c92126202cd1e4bd2365eb58d8cefa2095c3
+  ZED_INTERFACES_SHA: 4d40ae96f5ce6240356ad4fa5e455d0310b1c97d
 
 concurrency:
   group: zed-clients-${{ github.ref }}
@@ -90,12 +90,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: zed-pkg/zed-interfaces
+          ref: ${{ env.ZED_INTERFACES_SHA }}
           path: zed-interfaces
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
-      - run: cargo test
+      - run: |
+          test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+          cargo test
         working-directory: zed-clients/clients/rust
 
   wasm:
@@ -109,13 +112,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: zed-pkg/zed-interfaces
+          ref: ${{ env.ZED_INTERFACES_SHA }}
           path: zed-interfaces
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - run: cargo test
+      - run: |
+          test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+          cargo test
         working-directory: zed-clients/clients/wasm
       - run: cargo check --target wasm32-unknown-unknown
         working-directory: zed-clients/clients/wasm
