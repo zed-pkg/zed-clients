@@ -255,6 +255,7 @@ export interface DependencyGraphDownload {
   readonly etag: string;
   readonly graphDigest: string;
   readonly authoritative: boolean;
+  readonly contentLength: number;
   readonly filename: string;
   readonly url: URL;
 }
@@ -315,6 +316,10 @@ export async function downloadDependencyGraph(
     const graphDigest = requireGraphDigest(
       response.headers.get(DEPENDENCY_GRAPH_DIGEST_HEADER),
     );
+    const contentLength = requireContentLength(
+      response.headers.get("content-length"),
+      maxBytes,
+    );
     const authoritative = requireAuthoritativeHeader(
       response.headers.get(DEPENDENCY_GRAPH_AUTHORITATIVE_HEADER),
       descriptor.authoritative,
@@ -325,6 +330,7 @@ export async function downloadDependencyGraph(
       etag,
       graphDigest,
       authoritative,
+      contentLength,
       filename: dependencyGraphFilename(options, descriptor),
       url: new URL(url),
     } as const;
@@ -349,10 +355,16 @@ export async function downloadDependencyGraph(
     }
 
     requireExpectedMediaType(mediaType, descriptor.mediaType);
+    const body = await readBoundedBody(response, maxBytes);
+    if (body.byteLength !== contentLength) {
+      throw new TypeError(
+        "dependency graph response body length does not match Content-Length",
+      );
+    }
     return {
       status: 200,
       notModified: false,
-      body: await readBoundedBody(response, maxBytes),
+      body,
       ...metadata,
     };
   } finally {
@@ -429,7 +441,11 @@ function createTimedSignal(
 }
 
 function requireStrongEtag(value: string | null): string {
-  if (value === null || value.startsWith("W/") || !/^"[^"\r\n]+"$/.test(value)) {
+  if (
+    value === null ||
+    value.startsWith("W/") ||
+    !/^"(?:!|[\x23-\x7e])+"$/.test(value)
+  ) {
     throw new TypeError("dependency graph response is missing a valid strong ETag");
   }
   return value;
@@ -455,6 +471,24 @@ function requireExpectedMediaType(
       "dependency graph response Content-Type does not match the requested format",
     );
   }
+}
+
+function requireContentLength(value: string | null, maxBytes: number): number {
+  if (value === null || !/^(?:0|[1-9][0-9]*)$/.test(value)) {
+    throw new TypeError(
+      "dependency graph response is missing a valid Content-Length",
+    );
+  }
+  const length = Number(value);
+  if (!Number.isSafeInteger(length)) {
+    throw new TypeError("dependency graph response Content-Length is unsafe");
+  }
+  if (length > maxBytes) {
+    throw new RangeError(
+      `dependency graph body exceeds the ${maxBytes}-byte client limit`,
+    );
+  }
+  return length;
 }
 
 function requireAuthoritativeHeader(
@@ -495,18 +529,6 @@ async function readBoundedBody(
   response: Response,
   maxBytes: number,
 ): Promise<Uint8Array> {
-  const declaredLength = response.headers.get("content-length");
-  if (declaredLength !== null) {
-    if (!/^[0-9]+$/.test(declaredLength)) {
-      throw new TypeError("dependency graph response has an invalid Content-Length");
-    }
-    if (BigInt(declaredLength) > BigInt(maxBytes)) {
-      throw new RangeError(
-        `dependency graph body exceeds the ${maxBytes}-byte client limit`,
-      );
-    }
-  }
-
   if (response.body === null) {
     const body = new Uint8Array(await response.arrayBuffer());
     if (body.byteLength > maxBytes) {
