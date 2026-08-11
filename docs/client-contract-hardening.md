@@ -11,6 +11,11 @@ The canonical files live in `zed-pkg/zed-clients`:
 - `clients/api-surface.json` is the repository-specific API declaration generated
   or maintained by each client repository.
 
+The canonical hardener is checked in as ordinary reviewable Python source. Its
+bootstrap materialization run verified SHA-256
+`141f949573fe0049f19ca186ecddd91db1f625d8a3f4279f6af5f12810d7dad0`, ran the
+unit suite, and removed the temporary encoded payload before review and merge.
+
 ## Standard target matrix
 
 The fleet baseline contains 20 targets under `clients/`, with a hard minimum of 15:
