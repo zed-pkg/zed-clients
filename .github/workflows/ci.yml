@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  ZED_INTERFACES_SHA: 4d40ae96f5ce6240356ad4fa5e455d0310b1c97d
+  ZED_INTERFACES_SHA: 7d31f80dd8a310f218931165a3ad636a2f32b932
 
 concurrency:
   group: zed-clients-${{ github.ref }}
