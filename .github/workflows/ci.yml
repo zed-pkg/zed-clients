@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  ZED_INTERFACES_SHA: 4d40ae96f5ce6240356ad4fa5e455d0310b1c97d
+
 concurrency:
   group: zed-clients-${{ github.ref }}
   cancel-in-progress: true
@@ -87,12 +90,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: zed-pkg/zed-interfaces
+          ref: ${{ env.ZED_INTERFACES_SHA }}
           path: zed-interfaces
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
-      - run: cargo test
+      - run: |
+          test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+          cargo test
         working-directory: zed-clients/clients/rust
 
   wasm:
@@ -106,13 +112,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: zed-pkg/zed-interfaces
+          ref: ${{ env.ZED_INTERFACES_SHA }}
           path: zed-interfaces
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - run: cargo test
+      - run: |
+          test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+          cargo test
         working-directory: zed-clients/clients/wasm
       - run: cargo check --target wasm32-unknown-unknown
         working-directory: zed-clients/clients/wasm
@@ -124,10 +133,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: ${{ env.ZED_INTERFACES_SHA }}
+          path: zed-interfaces
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
-      - run: npm ci && npm run build && npm test
+      - name: Verify and test the graph format contract
+        env:
+          ZED_INTERFACES_FORMAT_FIXTURE: ../../zed-interfaces/fixtures/dependency-graph-formats-v1.json
+        run: |
+          test "$(git -C ../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+          npm ci
+          npm run build
+          npm test
         working-directory: clients/typescript
 
   python:
