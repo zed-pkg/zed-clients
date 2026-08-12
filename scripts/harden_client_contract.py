@@ -24,6 +24,7 @@ from jsonschema import Draft202012Validator
 
 SCHEMA_VERSION = 1
 MINIMUM_TARGETS = 15
+VALID_ZED_TARGET_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 
 
 @dataclass(frozen=True)
@@ -557,6 +558,9 @@ def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path
     repository_target = targets.setdefault("repository", tomlkit.table())
     if isinstance(repository_target, dict):
         repository_target["dir"] = "."
+        # Current zed-cli derives the whole-repository package name from
+        # package.name. Remove the obsolete "<repo>-repository" override.
+        repository_target.pop("name", None)
 
     for spec in TARGETS:
         current = targets.get(spec.zed_target)
@@ -576,6 +580,14 @@ def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path
             targets[spec.zed_target] = current
         current["dir"] = target_dirs[spec.name].relative_to(root).as_posix()
         current["adapter"] = spec.adapter
+        published_name = current.get("name")
+        if (
+            isinstance(published_name, str)
+            and VALID_ZED_TARGET_NAME.fullmatch(published_name) is None
+        ):
+            # Native registry coordinates remain under [targets.<name>.native].
+            # Scoped npm coordinates are not valid Zed target names.
+            del current["name"]
 
     rendered = tomlkit.dumps(data)
     tomllib.loads(rendered)
