@@ -16,6 +16,17 @@ bootstrap materialization run verified SHA-256
 `141f949573fe0049f19ca186ecddd91db1f625d8a3f4279f6af5f12810d7dad0`, ran the
 unit suite, and removed the temporary encoded payload before review and merge.
 
+## Behavior, authorization, and lifecycle metadata
+
+Every class, interface, function, type, field, constructor, and method has a
+stable `documentationId`, an explicit stability state, and nullable deprecation
+metadata. Every callable also declares `behavior` as `sync`, `async`, or
+`streaming` plus structured authorization mode, schemes, and scopes. The
+hardener fills deterministic defaults for existing declarations before Draft
+2020-12 validation; semantic validation rejects duplicate documentation IDs,
+async/behavior contradictions, and deprecated declarations without migration
+metadata.
+
 ## Standard target matrix
 
 The fleet baseline contains 20 targets under `clients/`, with a hard minimum of 15:
