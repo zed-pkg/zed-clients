@@ -1,0 +1,46 @@
+name: Canonical client API contract
+
+on:
+  pull_request:
+    paths:
+      - "schemas/client-api.schema.json"
+      - "clients/api-surface.json"
+      - "scripts/harden_client_contract.py"
+      - "tests/test_harden_client_contract.py"
+      - ".github/workflows/client-api-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "schemas/client-api.schema.json"
+      - "clients/api-surface.json"
+      - "scripts/harden_client_contract.py"
+      - "tests/test_harden_client_contract.py"
+      - ".github/workflows/client-api-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check jsonschema tomlkit
+      - name: Validate schema, canonical instance, and hardener
+        run: |
+          python - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+
+          schema = json.loads(open("schemas/client-api.schema.json", encoding="utf-8").read())
+          surface = json.loads(open("clients/api-surface.json", encoding="utf-8").read())
+          Draft202012Validator.check_schema(schema)
+          Draft202012Validator(schema).validate(surface)
+          PY
+          python -m unittest -v tests.test_harden_client_contract
