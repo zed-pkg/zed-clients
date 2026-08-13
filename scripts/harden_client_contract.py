@@ -414,6 +414,61 @@ def iter_type_refs(value: Any) -> Iterable[dict[str, Any]]:
             yield from iter_type_refs(child)
 
 
+def enrich_contract_metadata(surface: dict[str, Any]) -> bool:
+    """Add deterministic behavior, auth, lifecycle, and documentation metadata."""
+
+    changed = False
+
+    def set_default(value: dict[str, Any], key: str, default: Any) -> None:
+        nonlocal changed
+        if key not in value:
+            value[key] = default
+            changed = True
+
+    def visit(value: Any, path: tuple[str, ...]) -> None:
+        if isinstance(value, dict):
+            name = value.get("name")
+            lineage = (*path, str(name)) if isinstance(name, str) and name else path
+            documentable = (
+                isinstance(name, str)
+                and isinstance(value.get("visibility"), str)
+                and value.get("kind") in {"class", "interface", "function", "type"}
+            )
+            callable_value = (
+                isinstance(name, str)
+                and "parameters" in value
+                and "returns" in value
+                and isinstance(value.get("async"), bool)
+            )
+            field_value = (
+                isinstance(name, str)
+                and isinstance(value.get("visibility"), str)
+                and "type" in value
+                and not callable_value
+                and not documentable
+            )
+            if documentable or callable_value or field_value:
+                identifier = ".".join(
+                    re.sub(r"[^A-Za-z0-9_-]+", "-", part).strip("-") or "item"
+                    for part in ("api", *lineage)
+                )
+                set_default(value, "documentationId", identifier)
+                set_default(value, "stability", "stable")
+                set_default(value, "deprecation", None)
+            if callable_value:
+                set_default(value, "behavior", "async" if value["async"] else "sync")
+                set_default(value, "auth", {"mode": "none", "schemes": [], "scopes": []})
+            for key, child in value.items():
+                if key not in {"documentationId", "deprecation", "auth"}:
+                    visit(child, (*path, str(key)))
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, (*path, str(index)))
+
+    visit(surface, ())
+    return changed
+
+
 def semantic_errors(surface: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     symbols = surface.get("symbols", [])
@@ -444,6 +499,31 @@ def semantic_errors(surface: dict[str, Any]) -> list[str]:
     for visibility in ("public", "private"):
         if not any(method.get("visibility") == visibility for method in methods):
             errors.append(f"missing {visibility} method declaration")
+
+    documentation_ids: list[str] = []
+    def inspect(value: Any) -> None:
+        if isinstance(value, dict):
+            documentation_id = value.get("documentationId")
+            if isinstance(documentation_id, str):
+                documentation_ids.append(documentation_id)
+            if "parameters" in value and "returns" in value and isinstance(value.get("async"), bool):
+                behavior = value.get("behavior")
+                if behavior == "sync" and value["async"]:
+                    errors.append(f"sync callable is marked async: {documentation_id or value.get('name')}")
+                if behavior in {"async", "streaming"} and not value["async"]:
+                    errors.append(f"{behavior} callable is not marked async: {documentation_id or value.get('name')}")
+            if value.get("stability") == "deprecated" and value.get("deprecation") is None:
+                errors.append(f"deprecated declaration lacks deprecation metadata: {documentation_id or value.get('name')}")
+            for child in value.values():
+                inspect(child)
+        elif isinstance(value, list):
+            for child in value:
+                inspect(child)
+
+    inspect(surface)
+    duplicate_docs = sorted({item for item in documentation_ids if documentation_ids.count(item) > 1})
+    if duplicate_docs:
+        errors.append(f"duplicate documentation identifiers: {', '.join(duplicate_docs)}")
     return sorted(set(errors))
 
 
@@ -959,6 +1039,7 @@ def ensure_contract(
     else:
         surface = baseline_surface(org, repo, prefix)
 
+    enrich_contract_metadata(surface)
     validator = Draft202012Validator(schema)
     schema_errors = sorted(validator.iter_errors(surface), key=lambda item: list(item.absolute_path))
     if schema_errors:
