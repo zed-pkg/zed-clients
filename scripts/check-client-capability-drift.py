@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 
 EXPECTED_CLIENTS = {
+    "c",
+    "cpp",
     "rust",
     "wasm",
     "typescript",
@@ -25,6 +27,7 @@ EXPECTED_CLIENTS = {
     "ruby",
     "php",
     "swift",
+    "zig",
 }
 
 EXPECTED_TYPESCRIPT_RUNTIMES = {"nodejs", "deno", "bun", "edge"}
@@ -57,9 +60,20 @@ def main() -> None:
         extra = sorted(documented_set - EXPECTED_CLIENTS)
         fail(f"README matrix mismatch; missing={missing}, extra={extra}")
 
-    required_claim = "All fourteen clients\nimplement that core lifecycle."
-    if required_claim not in readme:
-        fail("README must state that all fourteen clients implement the core lifecycle")
+    required_mature_claim = (
+        "The mature clients implement package/version lookup, search, authenticated\n"
+        "publication and lifecycle mutations, and size-capped SHA-256-verified artifact\n"
+        "downloads."
+    )
+    if required_mature_claim not in readme:
+        fail("README must state the mature clients' reviewed lifecycle capability")
+
+    required_baseline_claim = (
+        "The newer dependency-free C, C++, and Zig baselines intentionally\n"
+        "claim only their currently implemented surface."
+    )
+    if required_baseline_claim not in readme:
+        fail("README must keep C, C++, and Zig baseline capabilities explicit")
 
     retired_claims = (
         "Completion of that operation in the older",
