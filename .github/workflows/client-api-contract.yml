@@ -7,6 +7,7 @@ on:
       - "clients/api-surface.json"
       - "scripts/harden_client_contract.py"
       - "tests/test_harden_client_contract.py"
+      - "tests/test_target_name_migration.py"
       - ".github/workflows/client-api-contract.yml"
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - "clients/api-surface.json"
       - "scripts/harden_client_contract.py"
       - "tests/test_harden_client_contract.py"
+      - "tests/test_target_name_migration.py"
       - ".github/workflows/client-api-contract.yml"
 
 permissions:
@@ -43,4 +45,6 @@ jobs:
           Draft202012Validator.check_schema(schema)
           Draft202012Validator(schema).validate(surface)
           PY
-          python -m unittest -v tests.test_harden_client_contract
+          python -m unittest -v \
+            tests.test_harden_client_contract \
+            tests.test_target_name_migration

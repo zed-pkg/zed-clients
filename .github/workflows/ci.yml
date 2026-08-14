@@ -27,56 +27,9 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.12"
-      - name: Validate the fourteen-language Zed target matrix
+      - name: Validate the Zed language and runtime matrix
         run: |
-          python3 - <<'PY'
-          import json
-          import pathlib
-          import tomllib
-
-          root = pathlib.Path.cwd()
-          with (root / ".zpkg.toml").open("rb") as handle:
-              manifest = tomllib.load(handle)
-          with (root / ".zpkg.lock").open("rb") as handle:
-              lock = tomllib.load(handle)
-          assert lock["version"] == 1
-          assert manifest["dependencies"] == {"zed-pkg/zed-interfaces": "^0.1.0"}
-
-          required = {
-              "nodejs": ("clients/typescript", "package.json"),
-              "python": ("clients/python", "pyproject.toml"),
-              "golang": ("clients/go", "go.mod"),
-              "rust": ("clients/rust", "Cargo.toml"),
-              "rust-wasm": ("clients/wasm", "Cargo.toml"),
-              "dart": ("clients/dart", "pubspec.yaml"),
-              "gleam": ("clients/gleam", "gleam.toml"),
-              "erlang": ("clients/erlang", "rebar.config"),
-              "elixir": ("clients/elixir", "mix.exs"),
-              "java": ("clients/java", "pom.xml"),
-              "kotlin": ("clients/kotlin", "pom.xml"),
-              "ruby": ("clients/ruby", "zed_pkg_client.gemspec"),
-              "php": ("clients/php", "composer.json"),
-              "swift": ("clients/swift", "Package.swift"),
-          }
-          targets = manifest["targets"]
-          for target, (directory, native_manifest) in required.items():
-              assert targets[target]["dir"] == directory, (target, targets[target])
-              assert (root / directory / native_manifest).is_file(), (
-                  target,
-                  native_manifest,
-              )
-          assert targets["repository"]["dir"] == "."
-          assert targets["golang"]["native"]["package"].endswith("/clients/go")
-          assert targets["golang"]["native"]["tag_format"] == "clients/go/v{version}"
-          assert targets["java"]["native"]["package"] == "tech.zpkg:zed-client"
-          assert targets["kotlin"]["native"]["package"] == "tech.zpkg:zed-client-kotlin"
-
-          package_json = json.loads((root / "clients/typescript/package.json").read_text())
-          for runtime in ("nodejs", "deno", "bun", "edge"):
-              assert f"./{runtime}" in package_json["exports"]
-              assert (root / "clients/typescript/src/runtimes" / runtime / "index.ts").is_file()
-          print("zed-clients fourteen-language matrix is complete")
-          PY
+          python3 scripts/validate-client-matrix.py
           python3 scripts/check-client-capability-drift.py
 
   rust:

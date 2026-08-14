@@ -60,7 +60,7 @@ adapter = "go"
                 (root / ".zpkg.toml").read_text(encoding="utf-8")
             )["targets"]
             self.assertNotIn("name", targets["repository"])
-            self.assertNotIn("name", targets["typescript-nodejs"])
+            self.assertNotIn("name", targets["nodejs"])
             self.assertEqual(
                 targets["golang"]["name"],
                 "existing-node-package",

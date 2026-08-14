@@ -36,6 +36,7 @@ class TargetSpec:
     adapter: str
     runtime: str | None = None
     zed_aliases: tuple[str, ...] = ()
+    publish: bool = True
 
 
 TARGETS: tuple[TargetSpec, ...] = (
@@ -43,53 +44,70 @@ TARGETS: tuple[TargetSpec, ...] = (
     TargetSpec("cpp", "cpp", "clients/cpp", ("clients/cxx",), "none", zed_aliases=("cxx",)),
     TargetSpec("zig", "zig", "clients/zig", (), "none"),
     TargetSpec("wasm", "rust-wasm", "clients/wasm", (), "rust"),
-    TargetSpec("gleamlang", "gleamlang", "clients/gleamlang", ("clients/gleam",), "none", zed_aliases=("gleam",)),
+    TargetSpec(
+        "gleamlang",
+        "gleam",
+        "clients/gleamlang",
+        ("clients/gleam",),
+        "none",
+        zed_aliases=("gleamlang",),
+    ),
     TargetSpec("erlang", "erlang", "clients/erlang", (), "none"),
     TargetSpec("elixir", "elixir", "clients/elixir", (), "none"),
     TargetSpec("dart", "dart", "clients/dart", (), "dart"),
     TargetSpec("rust", "rust", "clients/rust", (), "rust"),
     TargetSpec("java", "java", "clients/java", (), "java"),
     TargetSpec("golang", "golang", "clients/golang", ("clients/go",), "go", zed_aliases=("go",)),
-    TargetSpec("python3", "python3", "clients/python3", ("clients/python",), "none", zed_aliases=("python",)),
+    TargetSpec(
+        "python3",
+        "python",
+        "clients/python3",
+        ("clients/python",),
+        "none",
+        zed_aliases=("python3",),
+    ),
     TargetSpec("ruby", "ruby", "clients/ruby", (), "none"),
     TargetSpec("php", "php", "clients/php", (), "none"),
     TargetSpec("kotlin", "kotlin", "clients/kotlin", (), "java"),
     TargetSpec("swift", "swift", "clients/swift", (), "none"),
     TargetSpec(
         "typescript-nodejs",
-        "typescript-nodejs",
+        "nodejs",
         "clients/typescript/nodejs",
         ("clients/typescript",),
         "node",
         "nodejs",
-        ("nodejs", "typescript"),
+        ("typescript-nodejs", "typescript"),
     ),
     TargetSpec(
         "typescript-deno",
-        "typescript-deno",
+        "nodejs",
         "clients/typescript/deno",
         ("clients/typescript",),
         "none",
         "deno",
-        ("deno",),
+        ("typescript-deno", "deno"),
+        False,
     ),
     TargetSpec(
         "typescript-bun",
-        "typescript-bun",
+        "nodejs",
         "clients/typescript/bun",
         ("clients/typescript",),
         "node",
         "bun",
-        ("bun",),
+        ("typescript-bun", "bun"),
+        False,
     ),
     TargetSpec(
         "typescript-edge",
-        "typescript-edge",
+        "nodejs",
         "clients/typescript/edge",
         ("clients/typescript",),
         "none",
         "edge",
-        ("edge",),
+        ("typescript-edge", "edge"),
+        False,
     ),
 )
 
@@ -528,7 +546,12 @@ def semantic_errors(surface: dict[str, Any]) -> list[str]:
 
 
 def choose_dir(root: Path, spec: TargetSpec, manifest_targets: dict[str, Any]) -> Path:
-    for target_name in (spec.zed_target, *spec.zed_aliases):
+    target_names = (
+        (spec.zed_target, *spec.zed_aliases)
+        if spec.publish
+        else spec.zed_aliases
+    )
+    for target_name in target_names:
         entry = manifest_targets.get(target_name)
         if isinstance(entry, dict) and isinstance(entry.get("dir"), str):
             declared = root / entry["dir"]
@@ -610,6 +633,21 @@ def marker_dir(root: Path, spec: TargetSpec, target_dir: Path) -> Path:
     return target_dir
 
 
+def has_product_implementation(directory: Path) -> bool:
+    """Return true when a runtime already owns source code in its native layout."""
+
+    source_roots = (
+        directory / "src",
+        directory / "lib",
+        directory / "include",
+        directory / "Sources",
+        directory / "zed_pkg_client",
+    )
+    if any(root.is_dir() and any(item.is_file() for item in root.rglob("*")) for root in source_roots):
+        return True
+    return any((directory / filename).is_file() for filename in ("client.go", "mod.ts"))
+
+
 def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path], changed: list[str]) -> None:
     path = root / ".zpkg.toml"
     data = tomlkit.parse(path.read_text(encoding="utf-8")) if path.exists() else tomlkit.document()
@@ -643,6 +681,10 @@ def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path
         repository_target.pop("name", None)
 
     for spec in TARGETS:
+        if not spec.publish:
+            for alias in spec.zed_aliases:
+                targets.pop(alias, None)
+            continue
         current = targets.get(spec.zed_target)
         for alias in spec.zed_aliases:
             if alias not in targets:
@@ -683,6 +725,9 @@ def scaffold_target(
     prefix: str,
     changed: list[str],
 ) -> None:
+    if has_product_implementation(directory):
+        return
+
     cap = camel(prefix)
     s = snake(prefix)
     package = kebab(prefix)
@@ -790,9 +835,18 @@ target = "erlang"
 gleam_stdlib = ">= 0.44.0 and < 2.0.0"
 ''', changed, missing_only=True)
         write_text(directory / f"src/{s}_client.gleam", '''import gleam/option.{type Option}
-pub type Client { Client(base_url: String, bearer_token: Option(String)) }
-pub fn new(base_url: String, bearer_token: Option(String)) -> Client { Client(base_url:, bearer_token:) }
-pub fn health(client: Client) -> Bool { client.base_url != "" }
+
+pub type Client {
+  Client(base_url: String, bearer_token: Option(String))
+}
+
+pub fn new(base_url: String, bearer_token: Option(String)) -> Client {
+  Client(base_url:, bearer_token:)
+}
+
+pub fn health(client: Client) -> Bool {
+  client.base_url != ""
+}
 ''', changed, missing_only=True)
     elif spec.name == "erlang":
         write_text(directory / "rebar.config", "{erl_opts, [debug_info, warnings_as_errors]}.\n", changed, missing_only=True)
@@ -1142,23 +1196,30 @@ def verify(root: Path, schema_source: Path) -> list[str]:
         for alias in spec.zed_aliases:
             if alias in targets:
                 errors.append(f"legacy target alias [targets.{alias}] must migrate to [targets.{spec.zed_target}]")
+    target_dirs = choose_target_dirs(root, targets if isinstance(targets, dict) else {})
     found = 0
     for spec in TARGETS:
-        entry = targets.get(spec.zed_target)
-        if not isinstance(entry, dict):
-            errors.append(f"missing [targets.{spec.zed_target}]")
-            continue
-        raw_dir = entry.get("dir")
-        if not isinstance(raw_dir, str):
-            errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
-            continue
-        directory = (root / raw_dir).resolve()
-        if not directory.is_relative_to(repository_root):
-            errors.append(f"target {spec.zed_target} source directory escapes repository: {raw_dir!r}")
-            continue
-        if not directory.is_dir():
-            errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
-            continue
+        if spec.publish:
+            entry = targets.get(spec.zed_target)
+            if not isinstance(entry, dict):
+                errors.append(f"missing [targets.{spec.zed_target}]")
+                continue
+            raw_dir = entry.get("dir")
+            if not isinstance(raw_dir, str):
+                errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
+                continue
+            directory = (root / raw_dir).resolve()
+            if not directory.is_relative_to(repository_root):
+                errors.append(f"target {spec.zed_target} source directory escapes repository: {raw_dir!r}")
+                continue
+            if not directory.is_dir():
+                errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
+                continue
+        else:
+            directory = target_dirs[spec.name].resolve()
+            if not directory.is_dir():
+                errors.append(f"runtime {spec.name} points to missing directory: {directory}")
+                continue
         found += 1
         marker = marker_dir(root, spec, directory)
         digest_path = marker / ".zed-api-surface.sha256"
@@ -1170,7 +1231,11 @@ def verify(root: Path, schema_source: Path) -> list[str]:
         else:
             try:
                 contract = json.loads(contract_path.read_text(encoding="utf-8"))
-                if contract.get("apiSurfaceSha256") != surface_digest or contract.get("target") != spec.name:
+                if (
+                    contract.get("apiSurfaceSha256") != surface_digest
+                    or contract.get("target") != spec.name
+                    or contract.get("zedTarget") != spec.zed_target
+                ):
                     errors.append(f"{spec.name} contract marker does not match the canonical surface")
             except json.JSONDecodeError as exc:
                 errors.append(f"{spec.name} contract marker is invalid JSON: {exc}")
@@ -1180,6 +1245,14 @@ def verify(root: Path, schema_source: Path) -> list[str]:
         errors.append(f"standard fleet target count is {found}; expected {len(TARGETS)}")
     if not matrix_path.is_file():
         errors.append("missing clients/sdk-matrix.json")
+    else:
+        try:
+            matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+            matrix_targets = matrix.get("targets", {})
+            if set(matrix_targets) != {spec.name for spec in TARGETS}:
+                errors.append("clients/sdk-matrix.json does not describe the standard runtime fleet")
+        except (json.JSONDecodeError, OSError):
+            errors.append("clients/sdk-matrix.json is invalid JSON")
     return sorted(set(errors))
 
 

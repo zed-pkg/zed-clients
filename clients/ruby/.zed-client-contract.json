@@ -1,0 +1,10 @@
+{
+  "apiSurface": "clients/api-surface.json",
+  "apiSurfaceSha256": "b77c221a769eeed2263cbcd202befd93e24c00e5afc196b397ac0c767d2a59d7",
+  "coordinate": "zed-pkg/zed-clients",
+  "runtime": "ruby",
+  "schemaId": "https://zpkg.tech/schemas/client-api.schema.json",
+  "schemaVersion": 1,
+  "target": "ruby",
+  "zedTarget": "ruby"
+}

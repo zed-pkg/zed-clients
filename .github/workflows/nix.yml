@@ -47,6 +47,9 @@ jobs:
           - toolchains
           - preflight
           - contract
+          - c
+          - cpp
+          - zig
           - typescript
           - python
           - go

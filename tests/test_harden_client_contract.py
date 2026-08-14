@@ -68,7 +68,7 @@ dir = "."
             self.assertEqual(first["standardTargets"], 20)
 
             manifest = tomllib.loads((root / ".zpkg.toml").read_text(encoding="utf-8"))
-            self.assertEqual(len(manifest["targets"]) - 1, 20)
+            self.assertEqual(len(manifest["targets"]) - 1, 17)
             contract = json.loads((root / "clients/contract-manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(contract["targetCount"], 20)
             self.assertEqual(contract["coordinate"], "acme-cloud/acme-clients")
@@ -96,15 +96,16 @@ dir = "."
             self.run_tool(root, "--write")
             manifest = tomllib.loads((root / ".zpkg.toml").read_text(encoding="utf-8"))
             self.assertEqual(manifest["targets"]["golang"]["dir"], "clients/go")
-            self.assertEqual(manifest["targets"]["python3"]["dir"], "clients/python")
-            self.assertEqual(manifest["targets"]["typescript-nodejs"]["dir"], "clients/typescript")
-            self.assertEqual(manifest["targets"]["typescript-deno"]["dir"], "clients/typescript/deno")
-            self.assertEqual(manifest["targets"]["typescript-bun"]["dir"], "clients/typescript/bun")
-            self.assertEqual(manifest["targets"]["typescript-edge"]["dir"], "clients/typescript/edge")
+            self.assertEqual(manifest["targets"]["python"]["dir"], "clients/python")
+            self.assertEqual(manifest["targets"]["nodejs"]["dir"], "clients/typescript")
+            matrix = json.loads((root / "clients/sdk-matrix.json").read_text(encoding="utf-8"))
+            self.assertEqual(matrix["targets"]["typescript-deno"]["dir"], "clients/typescript/deno")
+            self.assertEqual(matrix["targets"]["typescript-bun"]["dir"], "clients/typescript/bun")
+            self.assertEqual(matrix["targets"]["typescript-edge"]["dir"], "clients/typescript/edge")
             canonical_dirs = [manifest["targets"][target]["dir"] for target in (
-                "c", "cpp", "zig", "rust-wasm", "gleamlang", "erlang", "elixir", "dart",
-                "rust", "java", "golang", "python3", "ruby", "php", "kotlin", "swift",
-                "typescript-nodejs", "typescript-deno", "typescript-bun", "typescript-edge",
+                "c", "cpp", "zig", "rust-wasm", "gleam", "erlang", "elixir", "dart",
+                "rust", "java", "golang", "python", "ruby", "php", "kotlin", "swift",
+                "nodejs",
             )]
             self.assertEqual(len(canonical_dirs), len(set(canonical_dirs)))
             self.assertEqual((root / "clients/go/go.mod").read_text(), "module example.test/existing\n\ngo 1.22\n")
@@ -150,15 +151,15 @@ adapter = "none"
             self.run_tool(root, "--write")
             manifest = tomllib.loads((root / ".zpkg.toml").read_text(encoding="utf-8"))
             targets = manifest["targets"]
-            for legacy in ("gleam", "python", "nodejs", "deno"):
+            for legacy in ("typescript-nodejs", "deno"):
                 self.assertNotIn(legacy, targets)
-            self.assertEqual(targets["gleamlang"]["dir"], "clients/gleam")
-            self.assertEqual(targets["python3"]["dir"], "clients/python")
-            self.assertEqual(targets["typescript-nodejs"]["dir"], "clients/typescript")
-            self.assertEqual(targets["typescript-nodejs"]["name"], "existing-node-package")
-            self.assertEqual(targets["typescript-nodejs"]["native"]["registry"], "npm")
+            self.assertEqual(targets["gleam"]["dir"], "clients/gleam")
+            self.assertEqual(targets["python"]["dir"], "clients/python")
+            self.assertEqual(targets["nodejs"]["dir"], "clients/typescript")
+            self.assertEqual(targets["nodejs"]["name"], "existing-node-package")
+            self.assertEqual(targets["nodejs"]["native"]["registry"], "npm")
             self.assertEqual(
-                targets["typescript-nodejs"]["native"]["package"],
+                targets["nodejs"]["native"]["package"],
                 "@acme-cloud/existing-node-package",
             )
             target_dirs = [value["dir"] for name, value in targets.items() if name != "repository"]
@@ -181,13 +182,13 @@ adapter = "none"
 
             failed = self.run_tool(root, "--check", expect=1)
             self.assertIn(
-                f"target python3 source directory escapes repository: '{outside.as_posix()}'",
+                f"target python source directory escapes repository: '{outside.as_posix()}'",
                 failed["errors"],
             )
 
             self.run_tool(root, "--write")
             manifest = tomllib.loads((root / ".zpkg.toml").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["targets"]["python3"]["dir"], "clients/python3")
+            self.assertEqual(manifest["targets"]["python"]["dir"], "clients/python3")
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged\n")
 
     def test_fingerprint_drift_fails_closed(self) -> None:
@@ -206,14 +207,14 @@ adapter = "none"
             manifest_path = root / ".zpkg.toml"
             manifest = manifest_path.read_text(encoding="utf-8")
             manifest = manifest.replace(
-                'dir = "clients/typescript/deno"',
-                'dir = "clients/typescript/nodejs"',
+                'dir = "clients/python3"',
+                'dir = "clients/golang"',
                 1,
             )
             manifest_path.write_text(manifest, encoding="utf-8")
             failed = self.run_tool(root, "--check", expect=1)
             self.assertIn(
-                "targets typescript-nodejs and typescript-deno share source directory 'clients/typescript/nodejs'",
+                "targets golang and python share source directory 'clients/golang'",
                 failed["errors"],
             )
 
