@@ -43,7 +43,7 @@ TARGETS: tuple[TargetSpec, ...] = (
     TargetSpec("c", "c", "clients/c", (), "none"),
     TargetSpec("cpp", "cpp", "clients/cpp", ("clients/cxx",), "none", zed_aliases=("cxx",)),
     TargetSpec("zig", "zig", "clients/zig", (), "none"),
-    TargetSpec("wasm", "rust-wasm", "clients/wasm", (), "rust"),
+    TargetSpec("wasm", "rust-wasm", "clients/wasm", (), "node"),
     TargetSpec(
         "gleamlang",
         "gleam",
@@ -54,10 +54,10 @@ TARGETS: tuple[TargetSpec, ...] = (
     ),
     TargetSpec("erlang", "erlang", "clients/erlang", (), "none"),
     TargetSpec("elixir", "elixir", "clients/elixir", (), "none"),
-    TargetSpec("dart", "dart", "clients/dart", (), "dart"),
-    TargetSpec("rust", "rust", "clients/rust", (), "rust"),
+    TargetSpec("dart", "dart", "clients/dart", (), "none"),
+    TargetSpec("rust", "rust", "clients/rust", (), "none"),
     TargetSpec("java", "java", "clients/java", (), "java"),
-    TargetSpec("golang", "golang", "clients/golang", ("clients/go",), "go", zed_aliases=("go",)),
+    TargetSpec("golang", "golang", "clients/golang", ("clients/go",), "none", zed_aliases=("go",)),
     TargetSpec(
         "python3",
         "python",

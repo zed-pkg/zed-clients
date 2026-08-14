@@ -28,7 +28,7 @@ dir = "."
 [targets.golang]
 dir = "clients/go"
 name = "zed-clients-golang"
-adapter = "go"
+adapter = "none"
 
 [targets.golang.native]
 registry = "go-modules"
@@ -37,16 +37,16 @@ tag_format = "clients/go/v{version}"
 
 [targets.rust]
 dir = "clients/rust"
-adapter = "rust"
+adapter = "none"
 
 [targets.rust-wasm]
 dir = "clients/wasm"
 name = "zed-clients-wasm"
-adapter = "rust"
+adapter = "node"
 
 [targets.dart]
 dir = "clients/dart"
-adapter = "dart"
+adapter = "none"
 
 [targets.erlang]
 dir = "clients/erlang"
