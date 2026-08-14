@@ -25,19 +25,10 @@ exclude = [".vendor/.zed/**"]
 [targets.repository]
 dir = "."
 
-[targets.nodejs]
-dir = "clients/typescript"
-name = "zed-clients-nodejs"
-adapter = "node"
-
-[targets.python]
-dir = "clients/python"
-adapter = "none"
-
 [targets.golang]
 dir = "clients/go"
 name = "zed-clients-golang"
-adapter = "none"
+adapter = "go"
 
 [targets.golang.native]
 registry = "go-modules"
@@ -46,20 +37,16 @@ tag_format = "clients/go/v{version}"
 
 [targets.rust]
 dir = "clients/rust"
-adapter = "none"
+adapter = "rust"
 
 [targets.rust-wasm]
 dir = "clients/wasm"
 name = "zed-clients-wasm"
-adapter = "node"
+adapter = "rust"
 
 [targets.dart]
 dir = "clients/dart"
-adapter = "none"
-
-[targets.gleam]
-dir = "clients/gleam"
-adapter = "none"
+adapter = "dart"
 
 [targets.erlang]
 dir = "clients/erlang"
@@ -97,4 +84,41 @@ adapter = "none"
 
 [targets.swift]
 dir = "clients/swift"
+adapter = "none"
+
+[targets.c]
+dir = "clients/c"
+adapter = "none"
+
+[targets.cpp]
+dir = "clients/cpp"
+adapter = "none"
+
+[targets.zig]
+dir = "clients/zig"
+adapter = "none"
+
+[targets.gleamlang]
+dir = "clients/gleam"
+adapter = "none"
+
+[targets.python3]
+dir = "clients/python"
+adapter = "none"
+
+[targets.typescript-nodejs]
+dir = "clients/typescript"
+name = "zed-clients-nodejs"
+adapter = "node"
+
+[targets.typescript-deno]
+dir = "clients/typescript/deno"
+adapter = "none"
+
+[targets.typescript-bun]
+dir = "clients/typescript/bun"
+adapter = "node"
+
+[targets.typescript-edge]
+dir = "clients/typescript/edge"
 adapter = "none"

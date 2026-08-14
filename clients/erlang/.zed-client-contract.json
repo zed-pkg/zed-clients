@@ -1,0 +1,10 @@
+{
+  "apiSurface": "clients/api-surface.json",
+  "apiSurfaceSha256": "57826c2c066782be6530a8fe6ecafa12b41d84c4e92e8dbff596f42e8de57d92",
+  "coordinate": "zed-pkg/zed-clients",
+  "runtime": "erlang",
+  "schemaId": "https://zpkg.tech/schemas/client-api.schema.json",
+  "schemaVersion": 1,
+  "target": "erlang",
+  "zedTarget": "erlang"
+}
