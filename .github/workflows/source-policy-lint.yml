@@ -1,0 +1,17 @@
+# Managed by ores-otel source-policy fleet rollout.
+name: Pre-build source policy lint
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-policy:
+    uses: ores-otel/.github/.github/workflows/source-policy-lint.yml@1d9aa4fbf1daf6b1aa70c2c2afe3cc591b0dabf7
+    permissions:
+      contents: read
