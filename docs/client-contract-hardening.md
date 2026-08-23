@@ -6,15 +6,16 @@ The canonical files live in `zed-pkg/zed-clients`:
 - `schemas/client-api.schema.json` defines package metadata plus public and private
   classes, constructors, methods, functions, interfaces, types, fields, parameters,
   return values, errors, async/static semantics, and recursive type references.
-- `scripts/harden_client_contract.py` preserves existing implementations, creates
-  missing runtime baselines, updates the Zed manifest, and verifies parity.
+- `scripts/harden_client_contract.py` preserves existing implementations and mature
+  publish matrices, creates missing runtime baselines for incomplete fleets, and
+  verifies parity.
 - `clients/api-surface.json` is the repository-specific API declaration generated
-  or maintained by each client repository.
+  or maintained by each client repository. Its `package.interfaces` entries must
+  exactly match the repository's versioned `*-interfaces` dependencies and declare
+  JSON Schema Draft 2020-12.
 
-The canonical hardener is checked in as ordinary reviewable Python source. Its
-bootstrap materialization run verified SHA-256
-`141f949573fe0049f19ca186ecddd91db1f625d8a3f4279f6af5f12810d7dad0`, ran the
-unit suite, and removed the temporary encoded payload before review and merge.
+The canonical hardener is checked in as ordinary reviewable Python source and is
+covered by its unit suite.
 
 ## Behavior, authorization, and lifecycle metadata
 
@@ -36,7 +37,9 @@ TypeScript/edge runtimes.
 
 Existing aliases such as `clients/go`, `clients/python`, `clients/gleam`, and a
 shared `clients/typescript` package are preserved. New repositories use the
-canonical directory names emitted by the hardener.
+canonical directory names emitted by the hardener. The normalized fleet view is
+stored in `clients/client-contract-matrix.json`; it never overwrites a repository's
+native `clients/sdk-matrix.json`, adapters, registry metadata, or runtime slicing.
 
 ## Parity proof
 
@@ -48,10 +51,13 @@ Every runtime receives:
 - `.zed-api-surface.sha256`, containing that digest.
 
 For shared TypeScript packages, markers are stored below
-`clients/typescript/.zed-contracts/<runtime>/`. A stale or missing marker fails
-closed, as do unresolved named types, duplicate symbols, missing visibility
-classes, malformed schemas, missing target directories, and invalid Zed target
-entries.
+`clients/typescript/.zed-contracts/<runtime>/`. The central contract manifest also
+records a deterministic digest and file count over each target's implementation
+source and export/package metadata. Any SDK or export-map change therefore fails
+until the reviewed contract manifest is regenerated. A stale or missing marker
+also fails closed, as do unresolved named types, duplicate symbols, missing
+visibility classes, malformed schemas, unsafe target paths, and uncovered client
+directories.
 
 ## Commands
 

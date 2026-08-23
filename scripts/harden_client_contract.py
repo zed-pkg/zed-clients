@@ -25,6 +25,23 @@ from jsonschema import Draft202012Validator
 SCHEMA_VERSION = 1
 MINIMUM_TARGETS = 15
 VALID_ZED_TARGET_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+CONTRACT_SOURCE_SUFFIXES = {
+    ".c", ".cc", ".cpp", ".cs", ".dart", ".erl", ".ex", ".exs",
+    ".gleam", ".go", ".h", ".hpp", ".java", ".js", ".kt", ".kts",
+    ".lua", ".mjs", ".ml", ".mli", ".php", ".py", ".rb", ".rs",
+    ".scala", ".sh", ".swift", ".ts", ".zig",
+}
+CONTRACT_METADATA_NAMES = {
+    "CMakeLists.txt", "Cargo.toml", "Package.swift", "build.gradle",
+    "build.gradle.kts", "build.zig", "composer.json", "deno.json", "dune",
+    "gleam.toml", "go.mod", "mix.exs", "package.json", "pom.xml",
+    "pubspec.yaml", "pyproject.toml", "rebar.config", "settings.gradle.kts",
+}
+CONTRACT_METADATA_SUFFIXES = {".gemspec", ".opam"}
+CONTRACT_IGNORED_PARTS = {
+    ".build", ".dart_tool", ".gradle", ".zed-contracts", "build", "dist",
+    "node_modules", "target", "test", "tests",
+}
 
 
 @dataclass(frozen=True)
@@ -393,7 +410,42 @@ def baseline_symbols(cap: str) -> list[dict[str, Any]]:
     ]
 
 
-def baseline_surface(org: str, repo: str, prefix: str) -> dict[str, Any]:
+def declared_interface_sources(root: Path) -> list[dict[str, str]]:
+    """Read the canonical ``*-interfaces`` dependencies from .zpkg.toml."""
+
+    manifest_path = root / ".zpkg.toml"
+    if not manifest_path.is_file():
+        return []
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    dependencies = manifest.get("dependencies", {})
+    if not isinstance(dependencies, dict):
+        return []
+    sources: list[dict[str, str]] = []
+    for coordinate, requirement in sorted(dependencies.items()):
+        if not isinstance(coordinate, str) or not coordinate.endswith("-interfaces"):
+            continue
+        if isinstance(requirement, str):
+            version_requirement = requirement
+        elif isinstance(requirement, dict) and isinstance(requirement.get("version"), str):
+            version_requirement = requirement["version"]
+        else:
+            raise ValueError(f"interface dependency {coordinate!r} needs a string version requirement")
+        sources.append(
+            {
+                "coordinate": coordinate,
+                "versionRequirement": version_requirement,
+                "schemaDialect": "https://json-schema.org/draft/2020-12/schema",
+            }
+        )
+    return sources
+
+
+def baseline_surface(
+    org: str,
+    repo: str,
+    prefix: str,
+    interfaces: list[dict[str, str]],
+) -> dict[str, Any]:
     cap = camel(prefix)
     return {
         "$schema": "./client-api.schema.json",
@@ -402,6 +454,7 @@ def baseline_surface(org: str, repo: str, prefix: str) -> dict[str, Any]:
             "coordinate": f"{org}/{repo}",
             "namespace": cap,
             "description": f"Canonical polyglot API contract for {org}/{repo}.",
+            "interfaces": interfaces,
         },
         "symbols": baseline_symbols(cap),
     }
@@ -633,6 +686,32 @@ def marker_dir(root: Path, spec: TargetSpec, target_dir: Path) -> Path:
     return target_dir
 
 
+def extension_client_dirs(root: Path, target_dirs: dict[str, Path]) -> dict[str, Path]:
+    """Return immediate client directories not owned by the standard matrix.
+
+    Some repositories intentionally ship additional languages such as C#, Lua,
+    OCaml, Scala, or shell.  They are not Zed publish targets, but they are still
+    SDK implementations and therefore must carry the same API-surface contract.
+    A standard target owns its immediate ``clients/<name>`` ancestor as well as
+    its exact directory so nested TypeScript runtime packages are not mistaken
+    for extensions.
+    """
+
+    clients_root = (root / "clients").resolve()
+    if not clients_root.is_dir():
+        return {}
+    owned = {directory.resolve() for directory in target_dirs.values()}
+    extensions: dict[str, Path] = {}
+    for child in sorted(clients_root.iterdir(), key=lambda item: item.name):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        resolved = child.resolve()
+        if any(directory == resolved or directory.is_relative_to(resolved) for directory in owned):
+            continue
+        extensions[child.name] = child
+    return extensions
+
+
 def has_product_implementation(directory: Path) -> bool:
     """Return true when a runtime already owns source code in its native layout."""
 
@@ -648,9 +727,62 @@ def has_product_implementation(directory: Path) -> bool:
     return any((directory / filename).is_file() for filename in ("client.go", "mod.ts"))
 
 
+def implementation_evidence(directory: Path) -> tuple[int, str]:
+    """Return a deterministic digest of SDK source and export metadata."""
+
+    records: list[dict[str, str]] = []
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(directory)
+        if CONTRACT_IGNORED_PARTS.intersection(relative.parts):
+            continue
+        if not (
+            path.suffix.lower() in CONTRACT_SOURCE_SUFFIXES
+            or path.name in CONTRACT_METADATA_NAMES
+            or path.suffix.lower() in CONTRACT_METADATA_SUFFIXES
+        ):
+            continue
+        records.append(
+            {
+                "path": relative.as_posix(),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+        )
+    records.sort(key=lambda item: item["path"])
+    return len(records), digest(records)
+
+
 def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path], changed: list[str]) -> None:
     path = root / ".zpkg.toml"
     data = tomlkit.parse(path.read_text(encoding="utf-8")) if path.exists() else tomlkit.document()
+    existing_targets = data.get("targets")
+    if isinstance(existing_targets, dict):
+        configured_target_dirs = [
+            Path(target["dir"])
+            for target in existing_targets.values()
+            if isinstance(target, dict)
+            and isinstance(target.get("dir"), str)
+            and target["dir"] != "."
+        ]
+        safe_client_dirs = [
+            directory
+            for directory in configured_target_dirs
+            if not directory.is_absolute()
+            and ".." not in directory.parts
+            and directory.parts
+            and directory.parts[0] == "clients"
+        ]
+        if (
+            # Existing fleets may publish a 13-target core while additional
+            # runtime and extension directories remain contract-covered.
+            len(safe_client_dirs) >= MINIMUM_TARGETS - 2
+            and len(safe_client_dirs) == len(configured_target_dirs)
+        ):
+            # Mature repositories own their Zed target names, adapters, native
+            # registry metadata, and runtime slicing. Contract hardening is
+            # additive and must not rewrite an already complete publish matrix.
+            return
     package = data.setdefault("package", tomlkit.table())
     if not isinstance(package, dict):
         raise ValueError(".zpkg.toml [package] must be a table")
@@ -679,6 +811,16 @@ def ensure_manifest(root: Path, org: str, repo: str, target_dirs: dict[str, Path
         # Current zed-cli derives the whole-repository package name from
         # package.name. Remove the obsolete "<repo>-repository" override.
         repository_target.pop("name", None)
+        # Early client repositories called the whole-repository release target
+        # ``contract``.  Keeping both names points two targets at the same source
+        # root and makes pre-publish validation ambiguous, so migrate the exact
+        # root alias while preserving any non-layout metadata.
+        legacy_contract = targets.get("contract")
+        if isinstance(legacy_contract, dict) and legacy_contract.get("dir") == ".":
+            merge_missing_table(repository_target, legacy_contract)
+            repository_target["dir"] = "."
+            repository_target.pop("adapter", None)
+            del targets["contract"]
 
     for spec in TARGETS:
         if not spec.publish:
@@ -1065,7 +1207,7 @@ def ensure_matrix(root: Path, target_dirs: dict[str, Path], changed: list[str]) 
             for spec in TARGETS
         },
     }
-    write_json(root / "clients/sdk-matrix.json", matrix, changed)
+    write_json(root / "clients/client-contract-matrix.json", matrix, changed)
 
 
 def ensure_contract(
@@ -1080,6 +1222,9 @@ def ensure_contract(
     schema = json.loads(schema_source.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     write_json(root / "clients/client-api.schema.json", schema, changed)
+    interfaces = declared_interface_sources(root)
+    if not interfaces:
+        raise ValueError(".zpkg.toml must declare at least one *-interfaces dependency")
 
     surface_path = root / "clients/api-surface.json"
     if surface_path.exists():
@@ -1087,11 +1232,12 @@ def ensure_contract(
         package = surface.setdefault("package", {})
         package["coordinate"] = f"{org}/{repo}"
         package.setdefault("namespace", camel(prefix))
+        package["interfaces"] = interfaces
         surface["schemaVersion"] = SCHEMA_VERSION
         surface["$schema"] = "./client-api.schema.json"
         merge_standard_symbols(surface, str(package["namespace"]))
     else:
-        surface = baseline_surface(org, repo, prefix)
+        surface = baseline_surface(org, repo, prefix, interfaces)
 
     enrich_contract_metadata(surface)
     validator = Draft202012Validator(schema)
@@ -1123,7 +1269,39 @@ def ensure_contract(
         }
         write_json(marker / ".zed-client-contract.json", contract, changed)
         write_text(marker / ".zed-api-surface.sha256", surface_digest, changed)
-        contracts.append({**contract, "dir": directory.relative_to(root).as_posix()})
+        implementation_file_count, implementation_digest = implementation_evidence(directory)
+        contracts.append(
+            {
+                **contract,
+                "dir": directory.relative_to(root).as_posix(),
+                "implementationFileCount": implementation_file_count,
+                "implementationSha256": implementation_digest,
+            }
+        )
+
+    for name, directory in extension_client_dirs(root, target_dirs).items():
+        target = f"extension-{kebab(name)}"
+        contract = {
+            "schemaVersion": SCHEMA_VERSION,
+            "coordinate": f"{org}/{repo}",
+            "target": target,
+            "zedTarget": target,
+            "runtime": name,
+            "apiSurface": "clients/api-surface.json",
+            "apiSurfaceSha256": surface_digest,
+            "schemaId": schema["$id"],
+        }
+        write_json(directory / ".zed-client-contract.json", contract, changed)
+        write_text(directory / ".zed-api-surface.sha256", surface_digest, changed)
+        implementation_file_count, implementation_digest = implementation_evidence(directory)
+        contracts.append(
+            {
+                **contract,
+                "dir": directory.relative_to(root).as_posix(),
+                "implementationFileCount": implementation_file_count,
+                "implementationSha256": implementation_digest,
+            }
+        )
 
     write_json(
         root / "clients/contract-manifest.json",
@@ -1131,7 +1309,7 @@ def ensure_contract(
             "schemaVersion": SCHEMA_VERSION,
             "coordinate": f"{org}/{repo}",
             "apiSurfaceSha256": surface_digest,
-            "targetCount": len(TARGETS),
+            "targetCount": len(contracts),
             "targets": contracts,
         },
         changed,
@@ -1144,7 +1322,8 @@ def verify(root: Path, schema_source: Path) -> list[str]:
     schema_path = root / "clients/client-api.schema.json"
     surface_path = root / "clients/api-surface.json"
     manifest_path = root / ".zpkg.toml"
-    matrix_path = root / "clients/sdk-matrix.json"
+    matrix_path = root / "clients/client-contract-matrix.json"
+    contract_manifest_path = root / "clients/contract-manifest.json"
     if not schema_path.is_file():
         errors.append("missing clients/client-api.schema.json")
         return errors
@@ -1192,34 +1371,16 @@ def verify(root: Path, schema_source: Path) -> list[str]:
                 )
             else:
                 target_owners[target_root] = str(target_name)
-    for spec in TARGETS:
-        for alias in spec.zed_aliases:
-            if alias in targets:
-                errors.append(f"legacy target alias [targets.{alias}] must migrate to [targets.{spec.zed_target}]")
     target_dirs = choose_target_dirs(root, targets if isinstance(targets, dict) else {})
     found = 0
     for spec in TARGETS:
-        if spec.publish:
-            entry = targets.get(spec.zed_target)
-            if not isinstance(entry, dict):
-                errors.append(f"missing [targets.{spec.zed_target}]")
-                continue
-            raw_dir = entry.get("dir")
-            if not isinstance(raw_dir, str):
-                errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
-                continue
-            directory = (root / raw_dir).resolve()
-            if not directory.is_relative_to(repository_root):
-                errors.append(f"target {spec.zed_target} source directory escapes repository: {raw_dir!r}")
-                continue
-            if not directory.is_dir():
-                errors.append(f"target {spec.zed_target} points to missing directory: {raw_dir!r}")
-                continue
-        else:
-            directory = target_dirs[spec.name].resolve()
-            if not directory.is_dir():
-                errors.append(f"runtime {spec.name} points to missing directory: {directory}")
-                continue
+        directory = target_dirs[spec.name].resolve()
+        if not directory.is_relative_to(repository_root):
+            errors.append(f"target {spec.name} source directory escapes repository: {directory}")
+            continue
+        if not directory.is_dir():
+            errors.append(f"target {spec.name} points to missing directory: {directory}")
+            continue
         found += 1
         marker = marker_dir(root, spec, directory)
         digest_path = marker / ".zed-api-surface.sha256"
@@ -1239,20 +1400,87 @@ def verify(root: Path, schema_source: Path) -> list[str]:
                     errors.append(f"{spec.name} contract marker does not match the canonical surface")
             except json.JSONDecodeError as exc:
                 errors.append(f"{spec.name} contract marker is invalid JSON: {exc}")
+    extensions = extension_client_dirs(root, target_dirs)
+    for name, directory in extensions.items():
+        target = f"extension-{kebab(name)}"
+        digest_path = directory / ".zed-api-surface.sha256"
+        contract_path = directory / ".zed-client-contract.json"
+        if not digest_path.is_file() or digest_path.read_text(encoding="utf-8").strip() != surface_digest:
+            errors.append(f"extension client {name} API fingerprint is missing or stale")
+        if not contract_path.is_file():
+            errors.append(f"extension client {name} contract marker is missing")
+            continue
+        try:
+            contract = json.loads(contract_path.read_text(encoding="utf-8"))
+            if (
+                contract.get("apiSurfaceSha256") != surface_digest
+                or contract.get("target") != target
+                or contract.get("zedTarget") != target
+                or contract.get("runtime") != name
+            ):
+                errors.append(f"extension client {name} contract marker does not match the canonical surface")
+        except json.JSONDecodeError as exc:
+            errors.append(f"extension client {name} contract marker is invalid JSON: {exc}")
     if found < MINIMUM_TARGETS:
         errors.append(f"only {found} targets are valid; at least {MINIMUM_TARGETS} are required")
     if found != len(TARGETS):
         errors.append(f"standard fleet target count is {found}; expected {len(TARGETS)}")
+    if not contract_manifest_path.is_file():
+        errors.append("missing clients/contract-manifest.json")
+    else:
+        try:
+            contract_manifest = json.loads(contract_manifest_path.read_text(encoding="utf-8"))
+            contract_targets = contract_manifest.get("targets", [])
+            expected_count = len(TARGETS) + len(extensions)
+            if contract_manifest.get("targetCount") != expected_count or len(contract_targets) != expected_count:
+                errors.append(
+                    "clients/contract-manifest.json target count does not cover the standard and extension client fleet"
+                )
+            for item in contract_targets:
+                if not isinstance(item, dict) or not isinstance(item.get("dir"), str):
+                    continue
+                directory = (root / item["dir"]).resolve()
+                if not directory.is_relative_to(root.resolve()) or not directory.is_dir():
+                    continue
+                implementation_file_count, implementation_digest = implementation_evidence(directory)
+                if (
+                    item.get("implementationFileCount") != implementation_file_count
+                    or item.get("implementationSha256") != implementation_digest
+                ):
+                    errors.append(
+                        f"{item.get('target', '<unknown>')} implementation source or export metadata drifted"
+                    )
+            declared_dirs = {
+                item.get("dir")
+                for item in contract_targets
+                if isinstance(item, dict) and isinstance(item.get("dir"), str)
+            }
+            clients_root = root / "clients"
+            uncovered = sorted(
+                child.name
+                for child in clients_root.iterdir()
+                if child.is_dir()
+                and not child.name.startswith(".")
+                and not any(
+                    (root / declared).resolve() == child.resolve()
+                    or (root / declared).resolve().is_relative_to(child.resolve())
+                    for declared in declared_dirs
+                )
+            )
+            if uncovered:
+                errors.append(f"client directories missing contract coverage: {', '.join(uncovered)}")
+        except (json.JSONDecodeError, OSError, TypeError) as exc:
+            errors.append(f"clients/contract-manifest.json is invalid: {exc}")
     if not matrix_path.is_file():
-        errors.append("missing clients/sdk-matrix.json")
+        errors.append("missing clients/client-contract-matrix.json")
     else:
         try:
             matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
             matrix_targets = matrix.get("targets", {})
             if set(matrix_targets) != {spec.name for spec in TARGETS}:
-                errors.append("clients/sdk-matrix.json does not describe the standard runtime fleet")
+                errors.append("clients/client-contract-matrix.json does not describe the standard runtime fleet")
         except (json.JSONDecodeError, OSError):
-            errors.append("clients/sdk-matrix.json is invalid JSON")
+            errors.append("clients/client-contract-matrix.json is invalid JSON")
     return sorted(set(errors))
 
 

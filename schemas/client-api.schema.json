@@ -40,12 +40,35 @@
         "private"
       ]
     },
+    "interfaceSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coordinate",
+        "versionRequirement",
+        "schemaDialect"
+      ],
+      "properties": {
+        "coordinate": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+-interfaces$"
+        },
+        "versionRequirement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaDialect": {
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        }
+      }
+    },
     "package": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "coordinate",
-        "namespace"
+        "namespace",
+        "interfaces"
       ],
       "properties": {
         "coordinate": {
@@ -54,6 +77,13 @@
         },
         "namespace": {
           "$ref": "#/$defs/identifier"
+        },
+        "interfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/interfaceSource"
+          }
         },
         "description": {
           "type": "string"

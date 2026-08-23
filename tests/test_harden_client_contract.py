@@ -30,6 +30,9 @@ url = "https://github.com/acme-cloud/acme-clients"
 [install]
 dir = ".vendor/.zed"
 
+[dependencies]
+"acme-cloud/acme-interfaces" = "^1.0.0"
+
 [targets.repository]
 dir = "."
 """,
@@ -98,7 +101,9 @@ dir = "."
             self.assertEqual(manifest["targets"]["golang"]["dir"], "clients/go")
             self.assertEqual(manifest["targets"]["python"]["dir"], "clients/python")
             self.assertEqual(manifest["targets"]["nodejs"]["dir"], "clients/typescript")
-            matrix = json.loads((root / "clients/sdk-matrix.json").read_text(encoding="utf-8"))
+            matrix = json.loads(
+                (root / "clients/client-contract-matrix.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(matrix["targets"]["typescript-deno"]["dir"], "clients/typescript/deno")
             self.assertEqual(matrix["targets"]["typescript-bun"]["dir"], "clients/typescript/bun")
             self.assertEqual(matrix["targets"]["typescript-edge"]["dir"], "clients/typescript/edge")
@@ -165,6 +170,49 @@ adapter = "none"
             target_dirs = [value["dir"] for name, value in targets.items() if name != "repository"]
             self.assertEqual(len(target_dirs), len(set(target_dirs)))
 
+    def test_mature_publish_matrix_is_not_rewritten(self) -> None:
+        with self.make_repo() as path:
+            root = Path(path)
+            self.run_tool(root, "--write")
+            manifest_path = root / ".zpkg.toml"
+            customized = manifest_path.read_text(encoding="utf-8").replace(
+                '[targets.rust]\ndir = "clients/rust"\nadapter = "none"',
+                '[targets.rust]\ndir = "clients/rust"\nadapter = "rust"',
+                1,
+            )
+            self.assertNotEqual(customized, manifest_path.read_text(encoding="utf-8"))
+            manifest_path.write_text(customized, encoding="utf-8")
+
+            self.run_tool(root, "--write")
+            self.assertEqual(manifest_path.read_text(encoding="utf-8"), customized)
+
+    def test_legacy_contract_root_target_migrates_to_repository(self) -> None:
+        with self.make_repo() as path:
+            root = Path(path)
+            manifest_path = root / ".zpkg.toml"
+            with manifest_path.open("a", encoding="utf-8") as manifest:
+                manifest.write(
+                    """
+[targets.contract]
+dir = "."
+adapter = "none"
+description = "Legacy whole-repository contract target"
+"""
+                )
+
+            self.run_tool(root, "--write")
+            checked = self.run_tool(root, "--check")
+
+            self.assertEqual(checked["errors"], [])
+            manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertNotIn("contract", manifest["targets"])
+            self.assertEqual(manifest["targets"]["repository"]["dir"], ".")
+            self.assertEqual(
+                manifest["targets"]["repository"]["description"],
+                "Legacy whole-repository contract target",
+            )
+            self.assertNotIn("adapter", manifest["targets"]["repository"])
+
     def test_manifest_target_cannot_escape_repository(self) -> None:
         with self.make_repo() as path, tempfile.TemporaryDirectory() as outside_path:
             root = Path(path)
@@ -199,6 +247,45 @@ adapter = "none"
             marker.write_text("0" * 64 + "\n", encoding="utf-8")
             failed = self.run_tool(root, "--check", expect=1)
             self.assertIn("rust API fingerprint is missing or stale", failed["errors"])
+
+    def test_implementation_source_drift_fails_closed(self) -> None:
+        with self.make_repo() as path:
+            root = Path(path)
+            self.run_tool(root, "--write")
+            source = root / "clients/rust/src/lib.rs"
+            source.write_text(source.read_text(encoding="utf-8") + "\n// drift\n", encoding="utf-8")
+
+            failed = self.run_tool(root, "--check", expect=1)
+            self.assertIn(
+                "rust implementation source or export metadata drifted",
+                failed["errors"],
+            )
+
+    def test_every_extension_client_directory_gets_contract_coverage(self) -> None:
+        with self.make_repo() as path:
+            root = Path(path)
+            (root / "clients/csharp").mkdir(parents=True)
+            (root / "clients/shell").mkdir(parents=True)
+
+            self.run_tool(root, "--write")
+            checked = self.run_tool(root, "--check")
+
+            self.assertEqual(checked["errors"], [])
+            manifest = json.loads((root / "clients/contract-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["targetCount"], 22)
+            self.assertEqual(
+                {target["target"] for target in manifest["targets"] if target["target"].startswith("extension-")},
+                {"extension-csharp", "extension-shell"},
+            )
+            for language in ("csharp", "shell"):
+                contract = json.loads(
+                    (root / f"clients/{language}/.zed-client-contract.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(contract["runtime"], language)
+
+            (root / "clients/csharp/.zed-api-surface.sha256").write_text("0" * 64 + "\n", encoding="utf-8")
+            failed = self.run_tool(root, "--check", expect=1)
+            self.assertIn("extension client csharp API fingerprint is missing or stale", failed["errors"])
 
     def test_duplicate_target_source_roots_fail_closed(self) -> None:
         with self.make_repo() as path:

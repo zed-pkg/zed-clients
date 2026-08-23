@@ -2,9 +2,9 @@
   "apiSurface": "clients/api-surface.json",
   "apiSurfaceSha256": "963a015f156d33ca56749d32a3c025601295a8b162feb27cecb91e3b6828de4b",
   "coordinate": "zed-pkg/zed-clients",
-  "runtime": "kotlin",
+  "runtime": "python3",
   "schemaId": "https://zpkg.tech/schemas/client-api.schema.json",
   "schemaVersion": 1,
-  "target": "kotlin",
-  "zedTarget": "kotlin"
+  "target": "extension-python3",
+  "zedTarget": "extension-python3"
 }
