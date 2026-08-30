@@ -29,6 +29,7 @@ jobs:
           python-version: "3.12"
       - name: Validate the Zed language and runtime matrix
         run: |
+          python3 -m unittest -v tests.test_validate_client_matrix
           python3 scripts/validate-client-matrix.py
           python3 scripts/check-client-capability-drift.py
 
