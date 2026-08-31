@@ -23,6 +23,9 @@ org = "acme-cloud"
 name = "acme-clients"
 version = "0.1.0"
 
+[dependencies]
+"acme-cloud/acme-interfaces" = "^0.1.0"
+
 [targets.repository]
 dir = "."
 name = "acme-clients-repository"
