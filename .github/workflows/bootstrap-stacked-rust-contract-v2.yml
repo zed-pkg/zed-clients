@@ -1,0 +1,103 @@
+name: bootstrap stacked Rust client contract v2
+
+on:
+  push:
+    branches:
+      - automation/2026-08-30-target-migration-fixture
+    paths:
+      - .github/workflows/bootstrap-stacked-rust-contract-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-stacked-rust-contract-v2
+  cancel-in-progress: false
+
+jobs:
+  merge-regenerate-test-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out the preserved Rust compatibility branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: automation/2026-08-30-target-migration-fixture
+          fetch-depth: 0
+
+      - name: Install pinned contract tooling
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+
+      - name: Merge the green fingerprint baseline without rewriting history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin automation/2026-08-30-contract-fingerprints
+          git merge --no-edit origin/automation/2026-08-30-contract-fingerprints
+
+      - name: Regenerate deterministic implementation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            jsonschema==4.25.1 tomlkit==0.13.3
+          python scripts/harden_client_contract.py \
+            --root . \
+            --schema schemas/client-api.schema.json \
+            --write \
+            --output "$RUNNER_TEMP/write-result.json"
+          python scripts/harden_client_contract.py \
+            --root . \
+            --schema schemas/client-api.schema.json \
+            --check \
+            --output "$RUNNER_TEMP/check-result.json"
+          python scripts/verify_client_contract.py
+          python -m unittest -v \
+            tests.test_harden_client_contract \
+            tests.test_target_name_migration
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          write = json.loads(Path(os.environ['RUNNER_TEMP'], 'write-result.json').read_text())
+          check = json.loads(Path(os.environ['RUNNER_TEMP'], 'check-result.json').read_text())
+          if write['errors']:
+              raise SystemExit(f"write-mode contract errors: {write['errors']}")
+          if check['errors']:
+              raise SystemExit(f"check-mode contract errors: {check['errors']}")
+          if check['changed']:
+              raise SystemExit(f"hardener is not idempotent: {check['changed']}")
+          changed = {
+              Path(item).resolve().relative_to(root).as_posix()
+              for item in write['changed']
+          }
+          expected = {'clients/contract-manifest.json'}
+          if changed != expected:
+              raise SystemExit(f"unexpected generated boundary: {sorted(changed)}")
+          PY
+          git diff --check
+          actual=$(git diff --name-only | sort)
+          expected=clients/contract-manifest.json
+          if [ "$actual" != "$expected" ]; then
+            printf 'unexpected working-tree boundary:\n%s\n' "$actual" >&2
+            exit 1
+          fi
+
+      - name: Commit the regenerated fingerprint and remove bootstraps
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/bootstrap-stacked-rust-contract.yml
+          rm .github/workflows/bootstrap-stacked-rust-contract-v2.yml
+          git add clients/contract-manifest.json \
+            .github/workflows/bootstrap-stacked-rust-contract.yml \
+            .github/workflows/bootstrap-stacked-rust-contract-v2.yml
+          git diff --cached --check
+          git commit -m 'fix(contract): regenerate stacked Rust implementation evidence'
+          git push origin HEAD:automation/2026-08-30-target-migration-fixture
