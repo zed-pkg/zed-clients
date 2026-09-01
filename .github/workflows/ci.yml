@@ -10,7 +10,9 @@ permissions:
   contents: read
 
 env:
-  ZED_INTERFACES_SHA: 7d31f80dd8a310f218931165a3ad636a2f32b932
+  # Exact zed-interfaces main commit that introduced the signing and mirror
+  # fields used by the Rust client compatibility layer in this stacked PR.
+  ZED_INTERFACES_SHA: 3c54298fc7a8c1b2f9c1d74f588c6118b38f197e
 
 concurrency:
   group: zed-clients-${{ github.ref }}
@@ -220,6 +222,17 @@ jobs:
       - run: ruby -c lib/zed_pkg_client.rb && ruby -Ilib test/client_test.rb
         working-directory: clients/ruby
 
+  swift:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: swift --version
+      - run: swift test --parallel
+        working-directory: clients/swift
+
   php:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -229,14 +242,3 @@ jobs:
           persist-credentials: false
       - run: php -l src/Client.php && php tests/client_test.php
         working-directory: clients/php
-
-  swift:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - run: swift --version
-      - run: swift test --parallel
-        working-directory: clients/swift
