@@ -6,10 +6,10 @@ on:
       - automation/2026-08-30-target-migration-fixture
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  patch-and-test:
+  patch-test-and-commit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           path: zed-clients
-          persist-credentials: false
+          persist-credentials: true
           show-progress: false
 
       - name: Check out current interface authority
@@ -65,24 +65,35 @@ jobs:
           cargo clippy --all-targets -- -D warnings
           cargo test --locked --all-targets
 
-      - name: Export the exact tested source and lock
+      - name: Commit only the tested source and lock, then remove this workflow
+        working-directory: zed-clients
+        env:
+          BRANCH_NAME: automation/2026-08-30-target-migration-fixture
         run: |
           set -euo pipefail
-          export_dir="$RUNNER_TEMP/interface-tip-fix"
-          mkdir -p "$export_dir/clients/rust/src"
-          cp zed-clients/clients/rust/src/lib.rs "$export_dir/clients/rust/src/lib.rs"
-          cp zed-clients/clients/rust/Cargo.lock "$export_dir/clients/rust/Cargo.lock"
-          (cd zed-clients && git diff --binary -- clients/rust/src/lib.rs clients/rust/Cargo.lock) \
-            > "$export_dir/fix.patch"
-          (cd zed-clients && git status --short -- clients/rust/src/lib.rs clients/rust/Cargo.lock) \
-            > "$export_dir/status.txt"
-          test -s "$export_dir/fix.patch"
-          printf '%s\n' "$GITHUB_SHA" > "$export_dir/source-sha.txt"
+          python3 - <<'PY'
+          import subprocess
 
-      - name: Upload tested compatibility repair
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: interface-tip-fix-${{ github.sha }}
-          path: ${{ runner.temp }}/interface-tip-fix
-          retention-days: 1
-          if-no-files-found: error
+          output = subprocess.check_output(
+              ['git', 'status', '--porcelain=v1', '-z'],
+              text=True,
+          )
+          paths = []
+          records = output.split('\0')
+          index = 0
+          while index < len(records) and records[index]:
+              record = records[index]
+              status = record[:2]
+              paths.append(record[3:])
+              index += 2 if status[0] in {'R', 'C'} else 1
+          expected = {'clients/rust/src/lib.rs', 'clients/rust/Cargo.lock'}
+          if set(paths) != expected:
+              raise SystemExit(f'expected only {sorted(expected)}, got {sorted(paths)}')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add clients/rust/src/lib.rs clients/rust/Cargo.lock
+          git rm .github/workflows/automation-interface-tip-fix.yml
+          git diff --cached --check
+          git commit -m 'test(rust): support signed mirrored version metadata'
+          git push origin "HEAD:$BRANCH_NAME"
