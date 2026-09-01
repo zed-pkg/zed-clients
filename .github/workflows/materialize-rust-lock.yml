@@ -1,0 +1,72 @@
+name: materialize resolver-generated Rust lock
+
+on:
+  push:
+    branches:
+      - automation/2026-08-30-target-migration-fixture
+    paths:
+      - .github/workflows/materialize-rust-lock.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-rust-lock
+  cancel-in-progress: false
+
+jobs:
+  resolve-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact client branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: automation/2026-08-30-target-migration-fixture
+          path: zed-clients
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Check out exact compatible interface contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: 5394b2e7b070354ee79a4c6ac79c26d6264970cd
+          path: zed-interfaces
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Resolve and verify the Rust lock
+        working-directory: zed-clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(sha256sum clients/rust/Cargo.lock | cut -d' ' -f1)"
+          nix develop --no-update-lock-file '.#rust' -c \
+            cargo generate-lockfile --manifest-path clients/rust/Cargo.toml
+          after="$(sha256sum clients/rust/Cargo.lock | cut -d' ' -f1)"
+          test "$before" != "$after"
+          nix develop --no-update-lock-file '.#rust' -c \
+            cargo check --locked --manifest-path clients/rust/Cargo.toml
+          git diff --check
+          test "$(git diff --name-only)" = 'clients/rust/Cargo.lock'
+
+      - name: Remove bootstrap workflow and commit only the lock
+        working-directory: zed-clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/materialize-rust-lock.yml
+          git add clients/rust/Cargo.lock .github/workflows/materialize-rust-lock.yml
+          git diff --cached --check
+          test "$(git diff --cached --name-only | sort)" = "$(printf '%s\n' .github/workflows/materialize-rust-lock.yml clients/rust/Cargo.lock | sort)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build(rust): resolve the compatible interface lock'
+          git push origin HEAD:automation/2026-08-30-target-migration-fixture
