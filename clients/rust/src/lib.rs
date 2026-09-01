@@ -704,6 +704,8 @@ mod download_tests {
             download_url: url.into(),
             published_at: "2024-01-01T00:00:00Z".into(),
             yanked: false,
+            mirrors: Vec::new(),
+            signatures: Vec::new(),
         }
     }
 
