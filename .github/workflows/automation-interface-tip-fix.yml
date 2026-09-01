@@ -55,21 +55,28 @@ jobs:
           path.write_text(updated, encoding='utf-8')
           PY
           cargo fmt --manifest-path clients/rust/Cargo.toml
+          cargo fmt --manifest-path clients/rust/Cargo.toml -- --check
 
       - name: Test against the exact current interface tip
         working-directory: zed-clients/clients/rust
         run: |
+          set -euo pipefail
+          cargo test --all-targets
+          cargo clippy --all-targets -- -D warnings
           cargo test --locked --all-targets
-          cargo clippy --locked --all-targets -- -D warnings
 
-      - name: Export the exact tested source file
+      - name: Export the exact tested source and lock
         run: |
           set -euo pipefail
           export_dir="$RUNNER_TEMP/interface-tip-fix"
           mkdir -p "$export_dir/clients/rust/src"
           cp zed-clients/clients/rust/src/lib.rs "$export_dir/clients/rust/src/lib.rs"
-          (cd zed-clients && git diff --binary -- clients/rust/src/lib.rs) \
+          cp zed-clients/clients/rust/Cargo.lock "$export_dir/clients/rust/Cargo.lock"
+          (cd zed-clients && git diff --binary -- clients/rust/src/lib.rs clients/rust/Cargo.lock) \
             > "$export_dir/fix.patch"
+          (cd zed-clients && git status --short -- clients/rust/src/lib.rs clients/rust/Cargo.lock) \
+            > "$export_dir/status.txt"
+          test -s "$export_dir/fix.patch"
           printf '%s\n' "$GITHUB_SHA" > "$export_dir/source-sha.txt"
 
       - name: Upload tested compatibility repair
