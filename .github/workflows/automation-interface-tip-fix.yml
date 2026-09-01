@@ -1,0 +1,81 @@
+name: one-shot interface tip compatibility fix
+
+on:
+  push:
+    branches:
+      - automation/2026-08-30-target-migration-fixture
+
+permissions:
+  contents: read
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out client branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: zed-clients
+          persist-credentials: false
+          show-progress: false
+
+      - name: Check out current interface authority
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: 3c54298fc7a8c1b2f9c1d74f588c6118b38f197e
+          path: zed-interfaces
+          persist-credentials: false
+          show-progress: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          components: rustfmt,clippy
+
+      - name: Apply the minimal fixture compatibility repair
+        working-directory: zed-clients
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('clients/rust/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r'(fn version\(url: &str, sha256: &str, size: u64\) -> VersionMetadata \{'
+              r'.*?\n\s+yanked: false,\n)(\s+\}\n)',
+              re.DOTALL,
+          )
+          replacement = r'\1            mirrors: Vec::new(),\n            signatures: Vec::new(),\n\2'
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one VersionMetadata fixture, replaced {count}')
+          path.write_text(updated, encoding='utf-8')
+          PY
+          cargo fmt --manifest-path clients/rust/Cargo.toml
+
+      - name: Test against the exact current interface tip
+        working-directory: zed-clients/clients/rust
+        run: |
+          cargo test --locked --all-targets
+          cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Export the exact tested source file
+        run: |
+          set -euo pipefail
+          export_dir="$RUNNER_TEMP/interface-tip-fix"
+          mkdir -p "$export_dir/clients/rust/src"
+          cp zed-clients/clients/rust/src/lib.rs "$export_dir/clients/rust/src/lib.rs"
+          (cd zed-clients && git diff --binary -- clients/rust/src/lib.rs) \
+            > "$export_dir/fix.patch"
+          printf '%s\n' "$GITHUB_SHA" > "$export_dir/source-sha.txt"
+
+      - name: Upload tested compatibility repair
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: interface-tip-fix-${{ github.sha }}
+          path: ${{ runner.temp }}/interface-tip-fix
+          retention-days: 1
+          if-no-files-found: error
