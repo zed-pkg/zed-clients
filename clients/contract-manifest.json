@@ -114,7 +114,7 @@
       "coordinate": "zed-pkg/zed-clients",
       "dir": "clients/rust",
       "implementationFileCount": 2,
-      "implementationSha256": "7c153295b973797feae3aa4b0a4320a6397f60428f5f56167f3dd389a91083f0",
+      "implementationSha256": "773dcdc3ca5854b9874fc73b5eb5543ce33133afc11d5d93d850f38cb502699d",
       "runtime": "rust",
       "schemaId": "https://zpkg.tech/schemas/client-api.schema.json",
       "schemaVersion": 1,
