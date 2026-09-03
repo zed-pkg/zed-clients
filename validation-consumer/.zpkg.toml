@@ -1,0 +1,26 @@
+[package]
+org = "zed-pkg"
+name = "zed-validation-consumer"
+version = "0.1.0"
+description = "Client adapters for zed-lib-core public validation SDKs"
+license = "MIT"
+
+[dependencies]
+"zed-pkg/zed-lib-core" = "^0.1.0"
+"zed-pkg/zed-interfaces" = "^0.1.0"
+
+[targets.typescript]
+dir = "typescript"
+adapter = "node"
+
+[targets.rust]
+dir = "rust"
+adapter = "rust"
+
+[targets.golang]
+dir = "golang"
+adapter = "none"
+
+[targets.gleam]
+dir = "gleam"
+adapter = "none"
