@@ -35,52 +35,31 @@ jobs:
           rust = Path("clients/rust/src/lib.rs")
           text = rust.read_text()
 
-          imports = """use zed_interfaces::registry::{
-              self, ApiError, ClaimOrgRequest, ClaimOrgResponse, PackageMetadata, PublishMeta,
-              PublishResponse, SearchResponse, VersionMetadata, YankRequest, YankResponse,
-          };
-          """
-          assert text.count(imports) == 1
-          text = text.replace(
-              imports,
-              imports + "\npub use zed_lib::{ResolveError, latest_stable, requirement_matches, resolve_version};\n",
+          reexport = (
+              "pub use zed_lib::{ResolveError, latest_stable, requirement_matches, "
+              "resolve_version};"
           )
+          if reexport not in text:
+              import_start = text.index("use zed_interfaces::registry::{")
+              import_end = text.index("};", import_start) + 2
+              text = text[:import_end] + "\n\n" + reexport + text[import_end:]
 
-          error_tail = """    #[error("artifact sha256 mismatch: expected {expected}, got {actual}")]
-              Sha256Mismatch { expected: String, actual: String },
-              #[error("{0}")]
-              Other(String),
-          """
-          assert text.count(error_tail) == 1
-          text = text.replace(
-              error_tail,
-              """    #[error("artifact sha256 mismatch: expected {expected}, got {actual}")]
-              Sha256Mismatch { expected: String, actual: String },
-              #[error("version resolution failed: {0}")]
-              Resolution(#[from] ResolveError),
-              #[error("{0}")]
-              Other(String),
-          """,
+          resolution_variant = (
+              '    #[error("version resolution failed: {0}")]\n'
+              '    Resolution(#[from] ResolveError),\n'
           )
+          if resolution_variant not in text:
+              error_anchor = '    #[error("{0}")]\n    Other(String),'
+              assert error_anchor in text
+              text = text.replace(
+                  error_anchor,
+                  resolution_variant + error_anchor,
+                  1,
+              )
 
-          get_version = """    pub fn get_version(&self, org: &str, name: &str, version: &str) -> Result<VersionMetadata> {
-              let path = registry::version_path(
-                  &checked_segment(org, "org")?,
-                  &checked_segment(name, "name")?,
-                  &checked_segment(version, "version")?,
-              );
-              let response = self.http.get(self.url(&path)).send()?;
-              self.json(response)
-          }
-          """
-          assert text.count(get_version) == 1
-          text = text.replace(
-              get_version,
-              get_version
-              + """
-              /// Resolve a package requirement through `zed-lib`, then fetch the exact
+          resolved_method = '''    /// Resolve a package requirement through `zed-lib`, then fetch the exact
               /// selected version through this SDK. The shared behavior layer owns
-              /// semver/calver/opaque interpretation; callers do not reimplement it.
+              /// semver, calver, and opaque interpretation; callers do not reimplement it.
               pub fn get_resolved_version(
                   &self,
                   org: &str,
@@ -91,14 +70,14 @@ jobs:
                   let selected = resolve_version(&package, requirement)?.to_string();
                   self.get_version(org, name, &selected)
               }
-          """,
-          )
 
-          test_anchor = """    #[test]
-              fn base_url_is_validated_and_token_is_redacted() {
-          """
-          assert text.count(test_anchor) == 1
-          shared_test = """    #[test]
+          '''
+          if "pub fn get_resolved_version(" not in text:
+              search_anchor = "    pub fn search(&self, query: &str) -> Result<SearchResponse> {"
+              assert search_anchor in text
+              text = text.replace(search_anchor, resolved_method + search_anchor, 1)
+
+          shared_test = '''    #[test]
               fn shared_resolution_accepts_the_sdk_interface_type() {
                   let metadata: PackageMetadata = serde_json::from_value(serde_json::json!({
                       "org": "acme",
@@ -120,54 +99,81 @@ jobs:
                   ));
               }
 
-          """
-          text = text.replace(test_anchor, shared_test + test_anchor)
+          '''
+          if "fn shared_resolution_accepts_the_sdk_interface_type()" not in text:
+              test_anchor = (
+                  "    #[test]\n"
+                  "    fn base_url_is_validated_and_token_is_redacted() {"
+              )
+              assert test_anchor in text
+              text = text.replace(test_anchor, shared_test + test_anchor, 1)
+
           rust.write_text(text)
 
           ci = Path(".github/workflows/ci.yml")
           workflow = ci.read_text()
-          checkout = """      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-                  with:
-                    repository: zed-pkg/zed-interfaces
-                    ref: ${{ env.ZED_INTERFACES_SHA }}
-                    path: zed-interfaces
-                    persist-credentials: false
-          """
-
           rust_start = workflow.index("  rust:\n")
           wasm_start = workflow.index("  wasm:\n")
           typescript_start = workflow.index("  typescript:\n")
-          rust_section = workflow[rust_start:wasm_start]
-          wasm_section = workflow[wasm_start:typescript_start]
-          assert rust_section.count(checkout) == 1
-          assert wasm_section.count(checkout) == 1
-          rust_section = rust_section.replace(checkout, "")
-          wasm_section = wasm_section.replace(checkout, "")
-          rust_section = rust_section.replace(
-              """      - run: |
-                    test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
-                    cargo test
-                  working-directory: zed-clients/clients/rust
-          """,
-              """      - run: cargo test --locked
-                  working-directory: zed-clients/clients/rust
-          """,
-          )
+
+          def remove_interfaces_checkout(section: str) -> str:
+              lines = section.splitlines(keepends=True)
+              output = []
+              index = 0
+              removed = 0
+              while index < len(lines):
+                  if lines[index].startswith("      - uses: actions/checkout@"):
+                      next_step = index + 1
+                      while next_step < len(lines) and not lines[next_step].startswith("      - "):
+                          next_step += 1
+                      block = "".join(lines[index:next_step])
+                      if "repository: zed-pkg/zed-interfaces" in block:
+                          removed += 1
+                          index = next_step
+                          continue
+                  output.append(lines[index])
+                  index += 1
+              assert removed == 1, removed
+              return "".join(output)
+
+          rust_section = remove_interfaces_checkout(workflow[rust_start:wasm_start])
+          wasm_section = remove_interfaces_checkout(workflow[wasm_start:typescript_start])
+
+          old_rust_test = '''      - run: |
+                  test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+                  cargo test
+                working-directory: zed-clients/clients/rust
+          '''
+          new_rust_test = '''      - run: cargo test --locked
+                working-directory: zed-clients/clients/rust
+          '''
+          assert old_rust_test in rust_section
+          rust_section = rust_section.replace(old_rust_test, new_rust_test, 1)
+
+          old_wasm_test = '''      - run: |
+                  test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+                  cargo test
+                working-directory: zed-clients/clients/wasm
+          '''
+          new_wasm_test = '''      - run: cargo test --locked
+                working-directory: zed-clients/clients/wasm
+          '''
+          assert old_wasm_test in wasm_section
+          wasm_section = wasm_section.replace(old_wasm_test, new_wasm_test, 1)
           wasm_section = wasm_section.replace(
-              """      - run: |
-                    test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
-                    cargo test
-                  working-directory: zed-clients/clients/wasm
-                - run: cargo check --target wasm32-unknown-unknown
-          """,
-              """      - run: cargo test --locked
-                  working-directory: zed-clients/clients/wasm
-                - run: cargo check --locked --target wasm32-unknown-unknown
-          """,
+              "      - run: cargo check --target wasm32-unknown-unknown\n",
+              "      - run: cargo check --locked --target wasm32-unknown-unknown\n",
+              1,
           )
+
           assert "../../../zed-interfaces" not in rust_section
           assert "../../../zed-interfaces" not in wasm_section
-          workflow = workflow[:rust_start] + rust_section + wasm_section + workflow[typescript_start:]
+          workflow = (
+              workflow[:rust_start]
+              + rust_section
+              + wasm_section
+              + workflow[typescript_start:]
+          )
           ci.write_text(workflow)
           PY
 
