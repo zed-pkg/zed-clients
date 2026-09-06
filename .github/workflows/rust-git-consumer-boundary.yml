@@ -1,0 +1,105 @@
+name: Rust git-consumer boundary
+
+on:
+  pull_request:
+    paths:
+      - "clients/rust/**"
+      - "clients/wasm/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/rust-git-consumer-boundary.yml"
+  push:
+    branches: [main]
+    paths:
+      - "clients/rust/**"
+      - "clients/wasm/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/rust-git-consumer-boundary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-git-consumer-boundary-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  INTERFACES_SHA: 3c54298fc7a8c1b2f9c1d74f588c6118b38f197e
+  LIB_SHA: eac0878750332b031bc12f6040b6a795a17e7417
+  CLIENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  native-exact-sha-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: stable
+      - name: Verify the repository-native SDK
+        run: cargo test --locked --manifest-path clients/rust/Cargo.toml
+      - name: Compile and run a clean external Cargo consumer
+        run: |
+          set -euo pipefail
+          consumer="$RUNNER_TEMP/zed-client-git-consumer"
+          mkdir -p "$consumer/src"
+          cat >"$consumer/Cargo.toml" <<EOF
+          [package]
+          name = "zed-client-git-consumer"
+          version = "0.0.0"
+          edition = "2024"
+
+          [dependencies]
+          serde_json = "1"
+          zed-client = { git = "https://github.com/zed-pkg/zed-clients.git", rev = "$CLIENT_SHA" }
+          zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "$INTERFACES_SHA" }
+          zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "$LIB_SHA" }
+          EOF
+          cat >"$consumer/src/main.rs" <<'EOF'
+          fn main() {
+              let metadata: zed_interfaces::registry::PackageMetadata =
+                  serde_json::from_value(serde_json::json!({
+                      "org": "acme",
+                      "name": "kit",
+                      "vcs": "git",
+                      "repo_url": "https://github.com/acme/kit",
+                      "description": null,
+                      "latest": "1.2.0",
+                      "versions": ["1.0.0", "1.2.0"],
+                      "version_scheme": "semver",
+                      "tags": []
+                  }))
+                  .expect("shared interface fixture");
+              assert_eq!(zed_client::resolve_version(&metadata, "^1.0").unwrap(), "1.2.0");
+              assert!(zed_lib::requirement_matches(
+                  zed_interfaces::version::VersionScheme::Semver,
+                  "^1.0",
+                  "1.2.0"
+              ));
+              let client = zed_client::Client::new("https://registry.zpkg.net")
+                  .expect("canonical registry client")
+                  .with_token("must-not-appear");
+              let debug = format!("{client:?}");
+              assert!(!debug.contains("must-not-appear"));
+          }
+          EOF
+          cargo run --locked --manifest-path "$consumer/Cargo.toml"
+
+  wasm-standalone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - run: cargo test --locked --manifest-path clients/wasm/Cargo.toml
+      - run: cargo check --locked --manifest-path clients/wasm/Cargo.toml --target wasm32-unknown-unknown
