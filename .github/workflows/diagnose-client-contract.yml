@@ -59,10 +59,14 @@ jobs:
           output = pathlib.Path(sys.argv[1])
           result = json.loads((output / "result.json").read_text(encoding="utf-8"))
           root = pathlib.Path.cwd().resolve()
-          for relative in result.get("changed", []):
-              source = (root / relative).resolve()
+          for changed_path in result.get("changed", []):
+              source = pathlib.Path(changed_path)
+              if not source.is_absolute():
+                  source = root / source
+              source = source.resolve()
               if not source.is_relative_to(root) or not source.is_file():
-                  raise SystemExit(f"invalid generated path: {relative}")
+                  raise SystemExit(f"invalid generated path: {changed_path}")
+              relative = source.relative_to(root)
               destination = output / "generated" / relative
               destination.parent.mkdir(parents=True, exist_ok=True)
               shutil.copy2(source, destination)
