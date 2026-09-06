@@ -27,7 +27,7 @@ jobs:
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - name: Route shared resolution through zed-lib and remove sibling checkout assumptions
+      - name: Route shared resolution through zed-lib
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -51,11 +51,7 @@ jobs:
           if resolution_variant not in text:
               error_anchor = '    #[error("{0}")]\n    Other(String),'
               assert error_anchor in text
-              text = text.replace(
-                  error_anchor,
-                  resolution_variant + error_anchor,
-                  1,
-              )
+              text = text.replace(error_anchor, resolution_variant + error_anchor, 1)
 
           resolved_method = '''    /// Resolve a package requirement through `zed-lib`, then fetch the exact
               /// selected version through this SDK. The shared behavior layer owns
@@ -109,72 +105,6 @@ jobs:
               text = text.replace(test_anchor, shared_test + test_anchor, 1)
 
           rust.write_text(text)
-
-          ci = Path(".github/workflows/ci.yml")
-          workflow = ci.read_text()
-          rust_start = workflow.index("  rust:\n")
-          wasm_start = workflow.index("  wasm:\n")
-          typescript_start = workflow.index("  typescript:\n")
-
-          def remove_interfaces_checkout(section: str) -> str:
-              lines = section.splitlines(keepends=True)
-              output = []
-              index = 0
-              removed = 0
-              while index < len(lines):
-                  if lines[index].startswith("      - uses: actions/checkout@"):
-                      next_step = index + 1
-                      while next_step < len(lines) and not lines[next_step].startswith("      - "):
-                          next_step += 1
-                      block = "".join(lines[index:next_step])
-                      if "repository: zed-pkg/zed-interfaces" in block:
-                          removed += 1
-                          index = next_step
-                          continue
-                  output.append(lines[index])
-                  index += 1
-              assert removed == 1, removed
-              return "".join(output)
-
-          rust_section = remove_interfaces_checkout(workflow[rust_start:wasm_start])
-          wasm_section = remove_interfaces_checkout(workflow[wasm_start:typescript_start])
-
-          old_rust_test = '''      - run: |
-                  test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
-                  cargo test
-                working-directory: zed-clients/clients/rust
-          '''
-          new_rust_test = '''      - run: cargo test --locked
-                working-directory: zed-clients/clients/rust
-          '''
-          assert old_rust_test in rust_section
-          rust_section = rust_section.replace(old_rust_test, new_rust_test, 1)
-
-          old_wasm_test = '''      - run: |
-                  test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
-                  cargo test
-                working-directory: zed-clients/clients/wasm
-          '''
-          new_wasm_test = '''      - run: cargo test --locked
-                working-directory: zed-clients/clients/wasm
-          '''
-          assert old_wasm_test in wasm_section
-          wasm_section = wasm_section.replace(old_wasm_test, new_wasm_test, 1)
-          wasm_section = wasm_section.replace(
-              "      - run: cargo check --target wasm32-unknown-unknown\n",
-              "      - run: cargo check --locked --target wasm32-unknown-unknown\n",
-              1,
-          )
-
-          assert "../../../zed-interfaces" not in rust_section
-          assert "../../../zed-interfaces" not in wasm_section
-          workflow = (
-              workflow[:rust_start]
-              + rust_section
-              + wasm_section
-              + workflow[typescript_start:]
-          )
-          ci.write_text(workflow)
           PY
 
           cargo fmt --manifest-path clients/rust/Cargo.toml
@@ -191,7 +121,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
-            .github/workflows/ci.yml \
             clients/rust/src/lib.rs \
             clients/rust/Cargo.lock \
             clients/wasm/Cargo.lock
