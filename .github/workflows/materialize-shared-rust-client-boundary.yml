@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rewrite-lock-test-and-commit:
+  lock-ci-test-and-commit:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -27,103 +27,77 @@ jobs:
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - name: Route shared resolution through zed-lib
+      - name: Remove obsolete sibling checkouts and refresh exact locks
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          rust = Path("clients/rust/src/lib.rs")
-          text = rust.read_text()
+          ci = Path(".github/workflows/ci.yml")
+          workflow = ci.read_text()
+          rust_start = workflow.index("  rust:\n")
+          wasm_start = workflow.index("  wasm:\n")
+          typescript_start = workflow.index("  typescript:\n")
 
-          reexport = (
-              "pub use zed_lib::{ResolveError, latest_stable, requirement_matches, "
-              "resolve_version};"
-          )
-          if reexport not in text:
-              import_start = text.index("use zed_interfaces::registry::{")
-              import_end = text.index("};", import_start) + 2
-              text = text[:import_end] + "\n\n" + reexport + text[import_end:]
-
-          resolution_variant = (
-              '    #[error("version resolution failed: {0}")]\n'
-              '    Resolution(#[from] ResolveError),\n'
-          )
-          if resolution_variant not in text:
-              error_anchor = '    #[error("{0}")]\n    Other(String),'
-              assert error_anchor in text
-              text = text.replace(error_anchor, resolution_variant + error_anchor, 1)
-
-          resolved_method = '''    /// Resolve a package requirement through `zed-lib`, then fetch the exact
-              /// selected version through this SDK. The shared behavior layer owns
-              /// semver, calver, and opaque interpretation; callers do not reimplement it.
-              pub fn get_resolved_version(
-                  &self,
-                  org: &str,
-                  name: &str,
-                  requirement: &str,
-              ) -> Result<VersionMetadata> {
-                  let package = self.get_package(org, name)?;
-                  let selected = resolve_version(&package, requirement)?.to_string();
-                  self.get_version(org, name, &selected)
-              }
+          rust_job = '''  rust:
+              runs-on: ubuntu-latest
+              timeout-minutes: 20
+              steps:
+                - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+                  with:
+                    path: zed-clients
+                    persist-credentials: false
+                - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+                  with:
+                    toolchain: stable
+                - run: cargo test --locked
+                  working-directory: zed-clients/clients/rust
 
           '''
-          if "pub fn get_resolved_version(" not in text:
-              search_anchor = "    pub fn search(&self, query: &str) -> Result<SearchResponse> {"
-              assert search_anchor in text
-              text = text.replace(search_anchor, resolved_method + search_anchor, 1)
-
-          shared_test = '''    #[test]
-              fn shared_resolution_accepts_the_sdk_interface_type() {
-                  let metadata: PackageMetadata = serde_json::from_value(serde_json::json!({
-                      "org": "acme",
-                      "name": "kit",
-                      "vcs": "git",
-                      "repo_url": "https://github.com/acme/kit",
-                      "description": null,
-                      "latest": "1.2.0",
-                      "versions": ["1.0.0", "1.2.0"],
-                      "version_scheme": "semver",
-                      "tags": []
-                  }))
-                  .unwrap();
-                  assert_eq!(resolve_version(&metadata, "^1.0").unwrap(), "1.2.0");
-                  assert!(requirement_matches(
-                      zed_interfaces::version::VersionScheme::Semver,
-                      "^1.0",
-                      "1.2.0"
-                  ));
-              }
+          wasm_job = '''  wasm:
+              runs-on: ubuntu-latest
+              timeout-minutes: 20
+              steps:
+                - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+                  with:
+                    path: zed-clients
+                    persist-credentials: false
+                - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+                  with:
+                    toolchain: stable
+                    targets: wasm32-unknown-unknown
+                - run: cargo test --locked
+                  working-directory: zed-clients/clients/wasm
+                - run: cargo check --locked --target wasm32-unknown-unknown
+                  working-directory: zed-clients/clients/wasm
 
           '''
-          if "fn shared_resolution_accepts_the_sdk_interface_type()" not in text:
-              test_anchor = (
-                  "    #[test]\n"
-                  "    fn base_url_is_validated_and_token_is_redacted() {"
-              )
-              assert test_anchor in text
-              text = text.replace(test_anchor, shared_test + test_anchor, 1)
-
-          rust.write_text(text)
+          workflow = (
+              workflow[:rust_start]
+              + rust_job
+              + wasm_job
+              + workflow[typescript_start:]
+          )
+          assert "../../../zed-interfaces" not in workflow[rust_start:typescript_start]
+          ci.write_text(workflow)
           PY
 
-          cargo fmt --manifest-path clients/rust/Cargo.toml
-          cargo fmt --manifest-path clients/wasm/Cargo.toml
+          cargo fmt --manifest-path clients/rust/Cargo.toml -- --check
+          cargo fmt --manifest-path clients/wasm/Cargo.toml -- --check
           cargo generate-lockfile --manifest-path clients/rust/Cargo.toml
           cargo generate-lockfile --manifest-path clients/wasm/Cargo.toml
           cargo test --locked --manifest-path clients/rust/Cargo.toml
           cargo test --locked --manifest-path clients/wasm/Cargo.toml
           cargo check --locked --manifest-path clients/wasm/Cargo.toml --target wasm32-unknown-unknown
 
-      - name: Commit materialized SDK source and locks
+      - name: Commit exact locks and CI boundaries
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
-            clients/rust/src/lib.rs \
+            .github/workflows/ci.yml \
             clients/rust/Cargo.lock \
             clients/wasm/Cargo.lock
           git diff --cached --check
-          git commit -m "feat(rust): route shared resolution through zed-lib"
+          git commit -m "ci(rust): test standalone exact-SHA clients"
           git push origin HEAD:feat/shared-rust-client-boundary
