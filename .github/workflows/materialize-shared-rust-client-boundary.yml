@@ -1,0 +1,194 @@
+# Temporary branch-only materializer; removed before pull-request review.
+name: materialize shared Rust client boundary
+
+on:
+  push:
+    branches: [feat/shared-rust-client-boundary]
+    paths:
+      - ".github/workflows/materialize-shared-rust-client-boundary.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-shared-rust-client-boundary
+  cancel-in-progress: true
+
+jobs:
+  rewrite-lock-test-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - name: Route shared resolution through zed-lib and remove sibling checkout assumptions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rust = Path("clients/rust/src/lib.rs")
+          text = rust.read_text()
+
+          imports = """use zed_interfaces::registry::{
+              self, ApiError, ClaimOrgRequest, ClaimOrgResponse, PackageMetadata, PublishMeta,
+              PublishResponse, SearchResponse, VersionMetadata, YankRequest, YankResponse,
+          };
+          """
+          assert text.count(imports) == 1
+          text = text.replace(
+              imports,
+              imports + "\npub use zed_lib::{ResolveError, latest_stable, requirement_matches, resolve_version};\n",
+          )
+
+          error_tail = """    #[error("artifact sha256 mismatch: expected {expected}, got {actual}")]
+              Sha256Mismatch { expected: String, actual: String },
+              #[error("{0}")]
+              Other(String),
+          """
+          assert text.count(error_tail) == 1
+          text = text.replace(
+              error_tail,
+              """    #[error("artifact sha256 mismatch: expected {expected}, got {actual}")]
+              Sha256Mismatch { expected: String, actual: String },
+              #[error("version resolution failed: {0}")]
+              Resolution(#[from] ResolveError),
+              #[error("{0}")]
+              Other(String),
+          """,
+          )
+
+          get_version = """    pub fn get_version(&self, org: &str, name: &str, version: &str) -> Result<VersionMetadata> {
+              let path = registry::version_path(
+                  &checked_segment(org, "org")?,
+                  &checked_segment(name, "name")?,
+                  &checked_segment(version, "version")?,
+              );
+              let response = self.http.get(self.url(&path)).send()?;
+              self.json(response)
+          }
+          """
+          assert text.count(get_version) == 1
+          text = text.replace(
+              get_version,
+              get_version
+              + """
+              /// Resolve a package requirement through `zed-lib`, then fetch the exact
+              /// selected version through this SDK. The shared behavior layer owns
+              /// semver/calver/opaque interpretation; callers do not reimplement it.
+              pub fn get_resolved_version(
+                  &self,
+                  org: &str,
+                  name: &str,
+                  requirement: &str,
+              ) -> Result<VersionMetadata> {
+                  let package = self.get_package(org, name)?;
+                  let selected = resolve_version(&package, requirement)?.to_string();
+                  self.get_version(org, name, &selected)
+              }
+          """,
+          )
+
+          test_anchor = """    #[test]
+              fn base_url_is_validated_and_token_is_redacted() {
+          """
+          assert text.count(test_anchor) == 1
+          shared_test = """    #[test]
+              fn shared_resolution_accepts_the_sdk_interface_type() {
+                  let metadata: PackageMetadata = serde_json::from_value(serde_json::json!({
+                      "org": "acme",
+                      "name": "kit",
+                      "vcs": "git",
+                      "repo_url": "https://github.com/acme/kit",
+                      "description": null,
+                      "latest": "1.2.0",
+                      "versions": ["1.0.0", "1.2.0"],
+                      "version_scheme": "semver",
+                      "tags": []
+                  }))
+                  .unwrap();
+                  assert_eq!(resolve_version(&metadata, "^1.0").unwrap(), "1.2.0");
+                  assert!(requirement_matches(
+                      zed_interfaces::version::VersionScheme::Semver,
+                      "^1.0",
+                      "1.2.0"
+                  ));
+              }
+
+          """
+          text = text.replace(test_anchor, shared_test + test_anchor)
+          rust.write_text(text)
+
+          ci = Path(".github/workflows/ci.yml")
+          workflow = ci.read_text()
+          checkout = """      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+                  with:
+                    repository: zed-pkg/zed-interfaces
+                    ref: ${{ env.ZED_INTERFACES_SHA }}
+                    path: zed-interfaces
+                    persist-credentials: false
+          """
+
+          rust_start = workflow.index("  rust:\n")
+          wasm_start = workflow.index("  wasm:\n")
+          typescript_start = workflow.index("  typescript:\n")
+          rust_section = workflow[rust_start:wasm_start]
+          wasm_section = workflow[wasm_start:typescript_start]
+          assert rust_section.count(checkout) == 1
+          assert wasm_section.count(checkout) == 1
+          rust_section = rust_section.replace(checkout, "")
+          wasm_section = wasm_section.replace(checkout, "")
+          rust_section = rust_section.replace(
+              """      - run: |
+                    test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+                    cargo test
+                  working-directory: zed-clients/clients/rust
+          """,
+              """      - run: cargo test --locked
+                  working-directory: zed-clients/clients/rust
+          """,
+          )
+          wasm_section = wasm_section.replace(
+              """      - run: |
+                    test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+                    cargo test
+                  working-directory: zed-clients/clients/wasm
+                - run: cargo check --target wasm32-unknown-unknown
+          """,
+              """      - run: cargo test --locked
+                  working-directory: zed-clients/clients/wasm
+                - run: cargo check --locked --target wasm32-unknown-unknown
+          """,
+          )
+          assert "../../../zed-interfaces" not in rust_section
+          assert "../../../zed-interfaces" not in wasm_section
+          workflow = workflow[:rust_start] + rust_section + wasm_section + workflow[typescript_start:]
+          ci.write_text(workflow)
+          PY
+
+          cargo fmt --manifest-path clients/rust/Cargo.toml
+          cargo fmt --manifest-path clients/wasm/Cargo.toml
+          cargo generate-lockfile --manifest-path clients/rust/Cargo.toml
+          cargo generate-lockfile --manifest-path clients/wasm/Cargo.toml
+          cargo test --locked --manifest-path clients/rust/Cargo.toml
+          cargo test --locked --manifest-path clients/wasm/Cargo.toml
+          cargo check --locked --manifest-path clients/wasm/Cargo.toml --target wasm32-unknown-unknown
+
+      - name: Commit materialized SDK source and locks
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/ci.yml \
+            clients/rust/src/lib.rs \
+            clients/rust/Cargo.lock \
+            clients/wasm/Cargo.lock
+          git diff --cached --check
+          git commit -m "feat(rust): route shared resolution through zed-lib"
+          git push origin HEAD:feat/shared-rust-client-boundary
