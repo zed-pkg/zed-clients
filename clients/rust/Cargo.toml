@@ -10,7 +10,7 @@ repository = "https://github.com/zed-pkg/zed-clients"
 # All Rust consumers share one exact contract crate and one exact behavior
 # crate. This keeps zed-cli, the SDK, and zed-lib on identical wire/model types.
 zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "3c54298fc7a8c1b2f9c1d74f588c6118b38f197e" }
-zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "46fdd419393ac791ac02707bb80529716df4f069" }
+zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "eac0878750332b031bc12f6040b6a795a17e7417" }
 hex = "0.4"
 percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
