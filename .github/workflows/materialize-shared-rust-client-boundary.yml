@@ -1,4 +1,4 @@
-# Temporary branch-only materializer; removed before pull-request review.
+# Temporary branch-only lock materializer; removed before pull-request review.
 name: materialize shared Rust client boundary
 
 on:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lock-ci-test-and-commit:
+  lock-test-and-commit:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -27,60 +27,9 @@ jobs:
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - name: Remove obsolete sibling checkouts and refresh exact locks
+      - name: Refresh exact locks and prove native plus WASM clients
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          ci = Path(".github/workflows/ci.yml")
-          workflow = ci.read_text()
-          rust_start = workflow.index("  rust:\n")
-          wasm_start = workflow.index("  wasm:\n")
-          typescript_start = workflow.index("  typescript:\n")
-
-          rust_job = '''  rust:
-              runs-on: ubuntu-latest
-              timeout-minutes: 20
-              steps:
-                - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-                  with:
-                    path: zed-clients
-                    persist-credentials: false
-                - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
-                  with:
-                    toolchain: stable
-                - run: cargo test --locked
-                  working-directory: zed-clients/clients/rust
-
-          '''
-          wasm_job = '''  wasm:
-              runs-on: ubuntu-latest
-              timeout-minutes: 20
-              steps:
-                - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-                  with:
-                    path: zed-clients
-                    persist-credentials: false
-                - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
-                  with:
-                    toolchain: stable
-                    targets: wasm32-unknown-unknown
-                - run: cargo test --locked
-                  working-directory: zed-clients/clients/wasm
-                - run: cargo check --locked --target wasm32-unknown-unknown
-                  working-directory: zed-clients/clients/wasm
-
-          '''
-          workflow = (
-              workflow[:rust_start]
-              + rust_job
-              + wasm_job
-              + workflow[typescript_start:]
-          )
-          assert "../../../zed-interfaces" not in workflow[rust_start:typescript_start]
-          ci.write_text(workflow)
-          PY
-
+          set -euo pipefail
           cargo fmt --manifest-path clients/rust/Cargo.toml -- --check
           cargo fmt --manifest-path clients/wasm/Cargo.toml -- --check
           cargo generate-lockfile --manifest-path clients/rust/Cargo.toml
@@ -88,16 +37,16 @@ jobs:
           cargo test --locked --manifest-path clients/rust/Cargo.toml
           cargo test --locked --manifest-path clients/wasm/Cargo.toml
           cargo check --locked --manifest-path clients/wasm/Cargo.toml --target wasm32-unknown-unknown
-
-      - name: Commit exact locks and CI boundaries
+      - name: Commit exact locks
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            .github/workflows/ci.yml \
-            clients/rust/Cargo.lock \
-            clients/wasm/Cargo.lock
+          git add clients/rust/Cargo.lock clients/wasm/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Rust and WASM locks are already current"
+            exit 0
+          fi
           git diff --cached --check
-          git commit -m "ci(rust): test standalone exact-SHA clients"
+          git commit -m "chore(lock): pin merged zed-lib client graph"
           git push origin HEAD:feat/shared-rust-client-boundary
