@@ -10,7 +10,9 @@ repository = "https://github.com/zed-pkg/zed-clients"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-zed-interfaces = { path = "../../../zed-interfaces/src/rust" }
+# Keep the browser SDK on the same exact wire contract as the native SDK and
+# CLI; a sibling-only path made the crate impossible to consume standalone.
+zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "3c54298fc7a8c1b2f9c1d74f588c6118b38f197e" }
 hex = "0.4"
 js-sys = "0.3"
 percent-encoding = "2"
