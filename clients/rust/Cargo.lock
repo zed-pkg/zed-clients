@@ -1495,7 +1495,7 @@ dependencies = [
 [[package]]
 name = "zed-lib"
 version = "0.1.0"
-source = "git+https://github.com/zed-pkg/zed-lib-core.git?rev=46fdd419393ac791ac02707bb80529716df4f069#46fdd419393ac791ac02707bb80529716df4f069"
+source = "git+https://github.com/zed-pkg/zed-lib-core.git?rev=eac0878750332b031bc12f6040b6a795a17e7417#eac0878750332b031bc12f6040b6a795a17e7417"
 dependencies = [
  "thiserror",
  "zed-interfaces",
