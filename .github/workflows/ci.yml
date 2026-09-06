@@ -42,18 +42,10 @@ jobs:
         with:
           path: zed-clients
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: zed-pkg/zed-interfaces
-          ref: ${{ env.ZED_INTERFACES_SHA }}
-          path: zed-interfaces
-          persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
-      - run: |
-          test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
-          cargo test
+      - run: cargo test --locked
         working-directory: zed-clients/clients/rust
 
   wasm:
@@ -64,21 +56,13 @@ jobs:
         with:
           path: zed-clients
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: zed-pkg/zed-interfaces
-          ref: ${{ env.ZED_INTERFACES_SHA }}
-          path: zed-interfaces
-          persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - run: |
-          test "$(git -C ../../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
-          cargo test
+      - run: cargo test --locked
         working-directory: zed-clients/clients/wasm
-      - run: cargo check --target wasm32-unknown-unknown
+      - run: cargo check --locked --target wasm32-unknown-unknown
         working-directory: zed-clients/clients/wasm
 
   typescript:
