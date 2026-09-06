@@ -87,6 +87,7 @@ jobs:
               assert!(!debug.contains("must-not-appear"));
           }
           EOF
+          cargo generate-lockfile --manifest-path "$consumer/Cargo.toml"
           cargo run --locked --manifest-path "$consumer/Cargo.toml"
 
   wasm-standalone:
