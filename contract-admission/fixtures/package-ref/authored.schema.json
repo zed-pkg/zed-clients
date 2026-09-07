@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "zed-admission-test.schema.json",
+  "$defs": {
+    "PackageRef": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "PackageRef",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "integrity": { "type": "string" }
+      },
+      "required": ["name", "version"],
+      "unevaluatedProperties": false
+    }
+  }
+}
