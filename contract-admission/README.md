@@ -29,9 +29,11 @@ bundles, enumerate all forbidden server identities in trusted build policy.
 
 Provision `.deps/typespec-json-schema-validator` at immutable commit
 `22d66b53d2cb5b99f78bbd16c2f235e3defde0f3`, then install its locked dependencies
-with `npm ci --ignore-scripts`. The workflow and integration suite assert this
-pin. This is repository/build-time tooling, not a new runtime SDK dependency.
-Missing checkout/compiler/input files are errors; tests never skip them.
+with `npm ci`. Its pinned flags2env dependency needs the native node-gyp install
+hook; `--ignore-scripts` leaves the canonical CLI unbuilt. The workflow and
+integration suite assert the pin. This is repository/build-time tooling, not a
+new runtime SDK dependency. Missing checkout/compiler/input files are errors;
+tests never skip them.
 
 `verifyContractIrEnvelope` is a pure preflight and intentionally returns only
 `envelopeVerified`, never `admitted`. It does not read files or prove that a
