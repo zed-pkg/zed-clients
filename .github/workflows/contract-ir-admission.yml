@@ -1,0 +1,45 @@
+name: Contract IR admission
+on:
+  pull_request:
+    paths:
+      - 'contract-admission/**'
+      - '.github/workflows/contract-ir-admission.yml'
+  push:
+    branches: [main, 'feat/DEN-3828-contract-ir-admission']
+    paths:
+      - 'contract-admission/**'
+      - '.github/workflows/contract-ir-admission.yml'
+permissions:
+  contents: read
+jobs:
+  contract-ir-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify reviewed head
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ORESoftware/typespec-json-schema-validator
+          ref: 22d66b53d2cb5b99f78bbd16c2f235e3defde0f3
+          path: .deps/typespec-json-schema-validator
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+      - name: Verify pinned validator revision
+        run: test "$(git -C .deps/typespec-json-schema-validator rev-parse HEAD)" = 22d66b53d2cb5b99f78bbd16c2f235e3defde0f3
+      - name: Install exact compiler toolchain and flags2env native addon
+        # The pinned f2e dependency installs its reviewed node-gyp addon.
+        # Suppressing scripts leaves the canonical CLI unusable.
+        run: npm ci --prefix .deps/typespec-json-schema-validator
+      - name: Unit admission regressions
+        run: node --test contract-admission/contract-ir-admission.test.mjs
+      - name: Real compiler and current-checkout admission
+        run: node --test contract-admission/contract-ir-integration.test.mjs
