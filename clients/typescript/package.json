@@ -12,6 +12,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./claritas": {
+      "types": "./dist/claritas.d.ts",
+      "default": "./dist/claritas.js"
+    },
     "./nodejs": {
       "types": "./dist/runtimes/nodejs/index.d.ts",
       "default": "./dist/runtimes/nodejs/index.js"
