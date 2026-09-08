@@ -11,9 +11,11 @@ test('projection preserves exact identity and excludes private metadata', () => 
   assert.deepEqual(result[0].series.rows,[{entityId:'same@1',cohortId:'group',at:0,value:0},{entityId:'same@2',cohortId:'group',at:0,value:null}]);
   assert.equal(JSON.stringify(rows),before);
 });
-test('individual projection uses the selected identifier and unchanged window', () => {
+test('individual projection uses the selected identifier and a whitelisted window snapshot', () => {
   const result=createZedMetricViews(port()).individual([sample('a',1)],'install_duration_ms','a',window);
-  assert.equal(result.series.id,'a'); assert.equal(result.series.window,window);
+  assert.equal(result.series.id,'a');
+  assert.deepEqual(result.series.window,{start:0,end:20,bucketMs:10});
+  assert.notEqual(result.series.window,window);
 });
 test('mixed metrics, units and invalid values fail with generic errors', () => {
   for(const patch of [{unit:'wrong'},{metric:'wrong'},{value:NaN},{value:Infinity},{value:'1'}])
