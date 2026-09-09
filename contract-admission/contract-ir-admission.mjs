@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 
 export const CONTRACT_IR_SCHEMA = 'ores.typespec-json-schema-validator.contract-ir/v1';
 export const PARITY_REPORT_SCHEMA = 'ores.typespec-json-schema-validator.report/v1';
-export const VALIDATOR_REVISION = '4473504c4c9d2831d825919f70c03994d8ce01d2';
+export const VALIDATOR_REVISION = 'd60d0d79d83e075077382623ec9e23a401ab601f';
 const HEX = /^[a-f0-9]{64}$/u;
 const LANES = ['typespec', 'authoredJsonSchema', 'generatedJsonSchema'];
 const COVERAGE = ['directDeclarationInventory', 'typespecGeneratedJsonSchemaComparison', 'differentialInstanceValidation'];
@@ -15,8 +15,6 @@ function need(condition, message) {
   if (!condition) throw new Error(`contract-ir admission rejected: ${message}`);
 }
 
-// Digest canonicalization is NOT schema normalization. Arrays are JSON data:
-// their order and multiplicity must survive even under enum/required/type keys.
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (!obj(value)) return value;
@@ -37,11 +35,6 @@ function identities(values, label, nonempty = false) {
   return new Set(values);
 }
 
-/**
- * Pure envelope preflight only. Its result deliberately does not say admitted:
- * hashes bind bytes but do not prove that current files or the compiler ran.
- * Only verifyContractIrAdmission below performs current-checkout verification.
- */
 export function verifyContractIrEnvelope({
   contractIr, parityReport, requiredDeclarations, forbiddenDeclarations = [], requireComplete = true,
 }) {
@@ -108,11 +101,6 @@ export function verifyContractIrEnvelope({
   return Object.freeze({ envelopeVerified: true, irId, runId: parityReport.runId });
 }
 
-/**
- * Verify against explicit, trusted checkout paths using the pinned upstream
- * verifier. Never read path defaults, executable locations, or source digests
- * from the receipt. Provision .deps with the revision recorded above.
- */
 export async function verifyContractIrAdmission(options) {
   need(obj(options), 'options must be an object');
   need(obj(options.inputPaths), 'explicit inputPaths are required');
