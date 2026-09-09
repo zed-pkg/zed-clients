@@ -1,8 +1,9 @@
 # Contract IR admission for Zed build tooling
 
 Tracks ORESoftware/typespec-json-schema-validator#20 and DEN-3828; related SDK
-rollout: DEN-3600. TypeSpec and authored JSON Schema remain independent peers.
-The generated witness and Contract IR are downstream evidence, not authorities.
+rollout: DEN-3600 and DEN-3959. TypeSpec and authored JSON Schema remain
+independent peers. The generated witness and Contract IR are downstream evidence,
+not authorities.
 
 `verifyContractIrAdmission` is **asynchronous**. Await it before generating or
 promoting a downstream artifact. It reuses the upstream `verifyContractIr`
@@ -28,7 +29,7 @@ explicitly opt out and still name every required declaration. For browser/edge
 bundles, enumerate all forbidden server identities in trusted build policy.
 
 Provision `.deps/typespec-json-schema-validator` at immutable commit
-`22d66b53d2cb5b99f78bbd16c2f235e3defde0f3`, then install its locked dependencies
+`d60d0d79d83e075077382623ec9e23a401ab601f`, then install its locked dependencies
 with `npm ci`. Its pinned flags2env dependency needs the native node-gyp install
 hook; `--ignore-scripts` leaves the canonical CLI unbuilt. The workflow and
 integration suite assert the pin. This is repository/build-time tooling, not a
@@ -50,10 +51,17 @@ compare with the pinned upstream implementation.
 ```sh
 node --test contract-admission/contract-ir-admission.test.mjs
 node --test contract-admission/contract-ir-integration.test.mjs
+node --test contract-admission/tjsv-conditional-witness.test.mjs
 ```
 
 The integration suite compiles independently authored fixtures, consumes real
 receipt/IR output, changes each checked input lane, tests rehashed tampering,
-and verifies stopped-run tombstones. It creates only disposable fixture copies;
-production authored schemas and generated SDK files are not modified. These
-focused checks do not replace the repository's Nix/native/browser merge gates.
+and verifies stopped-run tombstones. The DEN-3959 regression additionally
+exercises the pinned upstream witness engine from this consumer repository: a
+non-constructive conditional `allOf` branch must not erase a sibling object
+witness, nested enum probes such as `/effects/0` must be emitted without a null
+traversal crash, and sibling object constraints remain the final overlay.
+
+These focused checks create only disposable fixtures and do not modify
+production authored schemas or generated SDK files. They do not replace the
+repository's Nix/native/browser merge gates.
