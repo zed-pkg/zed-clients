@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 
 export const CONTRACT_IR_SCHEMA = 'ores.typespec-json-schema-validator.contract-ir/v1';
 export const PARITY_REPORT_SCHEMA = 'ores.typespec-json-schema-validator.report/v1';
-export const VALIDATOR_REVISION = '22d66b53d2cb5b99f78bbd16c2f235e3defde0f3';
+export const VALIDATOR_REVISION = '4473504c4c9d2831d825919f70c03994d8ce01d2';
 const HEX = /^[a-f0-9]{64}$/u;
 const LANES = ['typespec', 'authoredJsonSchema', 'generatedJsonSchema'];
 const COVERAGE = ['directDeclarationInventory', 'typespecGeneratedJsonSchemaComparison', 'differentialInstanceValidation'];
@@ -122,8 +122,6 @@ export async function verifyContractIrAdmission(options) {
     need(typeof path === 'string' && isAbsolute(path), `inputPaths.${name} must be an explicit absolute path`);
     inputPaths[name] = path;
   }
-  // Capture values before the first await so callers cannot swap evidence or
-  // admission policy while the filesystem/module loader is running.
   const evidence = JSON.parse(canonicalStringify({
     contractIr: options.contractIr, parityReport: options.parityReport,
     requiredDeclarations: options.requiredDeclarations,
