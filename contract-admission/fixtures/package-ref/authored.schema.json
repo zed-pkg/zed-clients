@@ -6,13 +6,13 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "$id": "PackageRef",
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "name": { "type": "string" },
         "version": { "type": "string" },
         "integrity": { "type": "string" }
       },
-      "required": ["name", "version"],
-      "unevaluatedProperties": false
+      "required": ["name", "version"]
     }
   }
 }

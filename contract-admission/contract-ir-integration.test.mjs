@@ -28,6 +28,7 @@ test('compiler-backed Contract IR consumer against the pinned validator', async 
   const reportPath = join(workspace, 'report.json');
   const irPath = join(workspace, 'contract-ir.json');
   const args = ['check', `--typespec=${inputPaths.typespec}`, `--schema=${inputPaths.authoredSchema}`,
+    '--seal-object-schemas=false',
     `--output-dir=${inputPaths.generatedSchema}`, `--report=${reportPath}`, `--contract-ir=${irPath}`, '--quiet'];
   await exec(process.execPath, [cli, ...args], { cwd: validator, timeout: 120000, maxBuffer: 4 * 1024 * 1024 });
   const evidence = { contractIr: await readJson(irPath), parityReport: await readJson(reportPath),

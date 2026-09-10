@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 
 export const CONTRACT_IR_SCHEMA = 'ores.typespec-json-schema-validator.contract-ir/v1';
 export const PARITY_REPORT_SCHEMA = 'ores.typespec-json-schema-validator.report/v1';
-export const VALIDATOR_REVISION = 'd60d0d79d83e075077382623ec9e23a401ab601f';
+export const VALIDATOR_REVISION = 'f8b68ccc9d88fbe3843106b8d79fd9e1dbac3256';
 const HEX = /^[a-f0-9]{64}$/u;
 const LANES = ['typespec', 'authoredJsonSchema', 'generatedJsonSchema'];
 const COVERAGE = ['directDeclarationInventory', 'typespecGeneratedJsonSchemaComparison', 'differentialInstanceValidation'];
