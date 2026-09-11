@@ -45,7 +45,7 @@ jobs:
               --precise "$NEW_LIB"
             cargo test --locked --all-targets
           )
-          python3 scripts/harden_client_contract.py --write
+          python3 scripts/harden_client_contract.py --schema schemas/client-api.schema.json --write
           changed="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' clients/contract-manifest.json clients/rust/Cargo.lock | sort)"
           unexpected="$(comm -23 <(printf '%s\n' "$changed") <(printf '%s\n' "$expected"))"
