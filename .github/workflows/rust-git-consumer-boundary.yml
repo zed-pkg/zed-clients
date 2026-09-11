@@ -26,9 +26,9 @@ concurrency:
 env:
   # DEN-3495 contract graph: peer TypeSpec + authored JSON Schema authority
   # admitted by ORESoftware/typespec-json-schema-validator, then consumed through
-  # the merged zed-lib-core pin so Cargo sees one interface crate identity.
-  INTERFACES_SHA: d11322f06ca6930ddcc34a745b4ef01e0b2bddc1
-  LIB_SHA: c8af76191f50ad7a177eb68740e69bdfaa652ff6
+  # the exact zed-lib-core pin so Cargo sees one interface crate identity.
+  INTERFACES_SHA: 0c2ffa7be791a44c8aa2a69ab4b1ea87aab4729c
+  LIB_SHA: 4509f19e1d3242226f28f842f550085864582380
   CLIENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
