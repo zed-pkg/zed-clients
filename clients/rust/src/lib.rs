@@ -15,6 +15,8 @@ use zed_interfaces::registry::{
     PublishResponse, SearchResponse, VersionMetadata, YankRequest, YankResponse,
 };
 
+pub use zed_lib::{ResolveError, latest_stable, requirement_matches, resolve_version};
+
 const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'.')
@@ -144,6 +146,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("artifact sha256 mismatch: expected {expected}, got {actual}")]
     Sha256Mismatch { expected: String, actual: String },
+    #[error("version resolution failed: {0}")]
+    Resolution(#[from] ResolveError),
     #[error("{0}")]
     Other(String),
 }
@@ -337,6 +341,20 @@ impl Client {
         );
         let response = self.http.get(self.url(&path)).send()?;
         self.json(response)
+    }
+
+    /// Resolve a package requirement through `zed-lib`, then fetch the exact
+    /// selected version through this SDK. The shared behavior layer owns
+    /// semver, calver, and opaque interpretation; callers do not reimplement it.
+    pub fn get_resolved_version(
+        &self,
+        org: &str,
+        name: &str,
+        requirement: &str,
+    ) -> Result<VersionMetadata> {
+        let package = self.get_package(org, name)?;
+        let selected = resolve_version(&package, requirement)?.to_string();
+        self.get_version(org, name, &selected)
     }
 
     pub fn search(&self, query: &str) -> Result<SearchResponse> {
@@ -566,6 +584,28 @@ mod tests {
     }
 
     #[test]
+    fn shared_resolution_accepts_the_sdk_interface_type() {
+        let metadata: PackageMetadata = serde_json::from_value(serde_json::json!({
+            "org": "acme",
+            "name": "kit",
+            "vcs": "git",
+            "repo_url": "https://github.com/acme/kit",
+            "description": null,
+            "latest": "1.2.0",
+            "versions": ["1.0.0", "1.2.0"],
+            "version_scheme": "semver",
+            "tags": []
+        }))
+        .unwrap();
+        assert_eq!(resolve_version(&metadata, "^1.0").unwrap(), "1.2.0");
+        assert!(requirement_matches(
+            zed_interfaces::version::VersionScheme::Semver,
+            "^1.0",
+            "1.2.0"
+        ));
+    }
+
+    #[test]
     fn base_url_is_validated_and_token_is_redacted() {
         let client = Client::new(" https://registry.zpkg.tech/gateway/// ")
             .unwrap()
@@ -704,6 +744,8 @@ mod download_tests {
             download_url: url.into(),
             published_at: "2024-01-01T00:00:00Z".into(),
             yanked: false,
+            mirrors: Vec::new(),
+            signatures: Vec::new(),
         }
     }
 

@@ -1,0 +1,49 @@
+name: Contract IR admission
+on:
+  pull_request:
+    paths:
+      - 'contract-admission/**'
+      - '.github/workflows/contract-ir-admission.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contract-admission/**'
+      - '.github/workflows/contract-ir-admission.yml'
+permissions:
+  contents: read
+jobs:
+  contract-ir-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify reviewed head
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ORESoftware/typespec-json-schema-validator
+          ref: f8b68ccc9d88fbe3843106b8d79fd9e1dbac3256
+          path: .deps/typespec-json-schema-validator
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.16.0'
+      - name: Verify pinned validator revision and clean source
+        run: |
+          test "$(git -C .deps/typespec-json-schema-validator rev-parse HEAD)" = f8b68ccc9d88fbe3843106b8d79fd9e1dbac3256
+          git -C .deps/typespec-json-schema-validator diff --exit-code HEAD
+      - name: Install exact compiler toolchain and flags2env native addon
+        run: npm ci --prefix .deps/typespec-json-schema-validator
+      - name: Unit admission regressions
+        run: node --test contract-admission/contract-ir-admission.test.mjs
+      - name: Real compiler and current-checkout admission
+        run: node --test contract-admission/contract-ir-integration.test.mjs
+      - name: Conditional witness regression
+        run: node --test contract-admission/tjsv-conditional-witness.test.mjs
+      - name: Preserve validator checkout
+        run: git -C .deps/typespec-json-schema-validator diff --exit-code HEAD

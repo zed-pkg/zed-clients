@@ -8,4 +8,13 @@ defmodule ZedPkgClientTest do
   test "accepts an absolute HTTP URL" do
     assert %ZedPkgClient{} = ZedPkgClient.new(registry_url: "http://localhost:8080/api/")
   end
+
+  test "redacts bearer tokens from struct inspection" do
+    secret = "den-3450-test-token"
+    rendered = inspect(ZedPkgClient.new(token: secret))
+
+    refute rendered =~ secret
+    refute rendered =~ "token:"
+    assert rendered =~ "ZedPkgClient"
+  end
 end

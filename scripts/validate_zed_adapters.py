@@ -8,6 +8,9 @@ import tomllib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ALLOWED = {"node", "java", "none"}
 EXPECTED = {
+    "c": "none",
+    "cpp": "none",
+    "zig": "none",
     "nodejs": "node",
     "python": "none",
     "golang": "none",

@@ -25,15 +25,6 @@ exclude = [".vendor/.zed/**"]
 [targets.repository]
 dir = "."
 
-[targets.nodejs]
-dir = "clients/typescript"
-name = "zed-clients-nodejs"
-adapter = "node"
-
-[targets.python]
-dir = "clients/python"
-adapter = "none"
-
 [targets.golang]
 dir = "clients/go"
 name = "zed-clients-golang"
@@ -55,10 +46,6 @@ adapter = "node"
 
 [targets.dart]
 dir = "clients/dart"
-adapter = "none"
-
-[targets.gleam]
-dir = "clients/gleam"
 adapter = "none"
 
 [targets.erlang]
@@ -98,3 +85,28 @@ adapter = "none"
 [targets.swift]
 dir = "clients/swift"
 adapter = "none"
+
+[targets.c]
+dir = "clients/c"
+adapter = "none"
+
+[targets.cpp]
+dir = "clients/cpp"
+adapter = "none"
+
+[targets.zig]
+dir = "clients/zig"
+adapter = "none"
+
+[targets.gleam]
+dir = "clients/gleam"
+adapter = "none"
+
+[targets.python]
+dir = "clients/python"
+adapter = "none"
+
+[targets.nodejs]
+dir = "clients/typescript"
+name = "zed-clients-nodejs"
+adapter = "node"

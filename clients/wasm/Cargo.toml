@@ -10,7 +10,11 @@ repository = "https://github.com/zed-pkg/zed-clients"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-zed-interfaces = { path = "../../../zed-interfaces/src/rust" }
+# Keep the browser SDK on the same exact wire contract as the native SDK and
+# CLI; a sibling-only path made the crate impossible to consume standalone.
+# Pin the current admitted interfaces main after #105. This revision includes
+# Rust source-path/API changes, so exact-head Rust/WASM gates must prove compatibility.
+zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "0c2ffa7be791a44c8aa2a69ab4b1ea87aab4729c" }
 hex = "0.4"
 js-sys = "0.3"
 percent-encoding = "2"

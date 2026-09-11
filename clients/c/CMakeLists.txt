@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(zed_client C)
+add_library(zed_client src/zed_client.c)
+target_include_directories(zed_client PUBLIC include)
+target_compile_features(zed_client PUBLIC c_std_11)

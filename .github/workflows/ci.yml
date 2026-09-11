@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Exact zed-interfaces main commit that introduced the signing and mirror
+  # fields used by the Rust client compatibility layer in this stacked PR.
+  ZED_INTERFACES_SHA: 3c54298fc7a8c1b2f9c1d74f588c6118b38f197e
+
 concurrency:
   group: zed-clients-${{ github.ref }}
   cancel-in-progress: true
@@ -24,56 +29,9 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.12"
-      - name: Validate the fourteen-language Zed target matrix
+      - name: Validate the Zed language and runtime matrix
         run: |
-          python3 - <<'PY'
-          import json
-          import pathlib
-          import tomllib
-
-          root = pathlib.Path.cwd()
-          with (root / ".zpkg.toml").open("rb") as handle:
-              manifest = tomllib.load(handle)
-          with (root / ".zpkg.lock").open("rb") as handle:
-              lock = tomllib.load(handle)
-          assert lock["version"] == 1
-          assert manifest["dependencies"] == {"zed-pkg/zed-interfaces": "^0.1.0"}
-
-          required = {
-              "nodejs": ("clients/typescript", "package.json"),
-              "python": ("clients/python", "pyproject.toml"),
-              "golang": ("clients/go", "go.mod"),
-              "rust": ("clients/rust", "Cargo.toml"),
-              "rust-wasm": ("clients/wasm", "Cargo.toml"),
-              "dart": ("clients/dart", "pubspec.yaml"),
-              "gleam": ("clients/gleam", "gleam.toml"),
-              "erlang": ("clients/erlang", "rebar.config"),
-              "elixir": ("clients/elixir", "mix.exs"),
-              "java": ("clients/java", "pom.xml"),
-              "kotlin": ("clients/kotlin", "pom.xml"),
-              "ruby": ("clients/ruby", "zed_pkg_client.gemspec"),
-              "php": ("clients/php", "composer.json"),
-              "swift": ("clients/swift", "Package.swift"),
-          }
-          targets = manifest["targets"]
-          for target, (directory, native_manifest) in required.items():
-              assert targets[target]["dir"] == directory, (target, targets[target])
-              assert (root / directory / native_manifest).is_file(), (
-                  target,
-                  native_manifest,
-              )
-          assert targets["repository"]["dir"] == "."
-          assert targets["golang"]["native"]["package"].endswith("/clients/go")
-          assert targets["golang"]["native"]["tag_format"] == "clients/go/v{version}"
-          assert targets["java"]["native"]["package"] == "tech.zpkg:zed-client"
-          assert targets["kotlin"]["native"]["package"] == "tech.zpkg:zed-client-kotlin"
-
-          package_json = json.loads((root / "clients/typescript/package.json").read_text())
-          for runtime in ("nodejs", "deno", "bun", "edge"):
-              assert f"./{runtime}" in package_json["exports"]
-              assert (root / "clients/typescript/src/runtimes" / runtime / "index.ts").is_file()
-          print("zed-clients fourteen-language matrix is complete")
-          PY
+          python3 scripts/validate-client-matrix.py
           python3 scripts/check-client-capability-drift.py
 
   rust:
@@ -84,15 +42,10 @@ jobs:
         with:
           path: zed-clients
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: zed-pkg/zed-interfaces
-          path: zed-interfaces
-          persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
-      - run: cargo test
+      - run: cargo test --locked
         working-directory: zed-clients/clients/rust
 
   wasm:
@@ -103,18 +56,13 @@ jobs:
         with:
           path: zed-clients
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: zed-pkg/zed-interfaces
-          path: zed-interfaces
-          persist-credentials: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-      - run: cargo test
+      - run: cargo test --locked
         working-directory: zed-clients/clients/wasm
-      - run: cargo check --target wasm32-unknown-unknown
+      - run: cargo check --locked --target wasm32-unknown-unknown
         working-directory: zed-clients/clients/wasm
 
   typescript:
@@ -124,10 +72,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: zed-pkg/zed-interfaces
+          ref: ${{ env.ZED_INTERFACES_SHA }}
+          path: zed-interfaces
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
-      - run: npm ci && npm run build && npm test
+      - name: Verify and test the graph format contract
+        env:
+          ZED_INTERFACES_FORMAT_FIXTURE: ../../zed-interfaces/fixtures/dependency-graph-formats-v1.json
+        run: |
+          test "$(git -C ../../zed-interfaces rev-parse HEAD)" = "$ZED_INTERFACES_SHA"
+          npm ci
+          npm run build
+          npm test
         working-directory: clients/typescript
 
   python:
@@ -245,6 +206,17 @@ jobs:
       - run: ruby -c lib/zed_pkg_client.rb && ruby -Ilib test/client_test.rb
         working-directory: clients/ruby
 
+  swift:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: swift --version
+      - run: swift test --parallel
+        working-directory: clients/swift
+
   php:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -254,14 +226,3 @@ jobs:
           persist-credentials: false
       - run: php -l src/Client.php && php tests/client_test.php
         working-directory: clients/php
-
-  swift:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - run: swift --version
-      - run: swift test --parallel
-        working-directory: clients/swift

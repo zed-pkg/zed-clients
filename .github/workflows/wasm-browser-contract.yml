@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ZED_INTERFACES_SHA: 5394b2e7b070354ee79a4c6ac79c26d6264970cd
+  ZED_INTERFACES_SHA: 2c8c240a51e80ea34bd74e89b4e92c13b26d309f
   CARGO_TERM_COLOR: always
 
 jobs:

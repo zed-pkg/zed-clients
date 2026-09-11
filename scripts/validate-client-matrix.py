@@ -10,6 +10,9 @@ import tomllib
 
 
 REQUIRED_TARGETS: dict[str, tuple[str, str]] = {
+    "c": ("clients/c", "CMakeLists.txt"),
+    "cpp": ("clients/cpp", "CMakeLists.txt"),
+    "zig": ("clients/zig", "build.zig"),
     "nodejs": ("clients/typescript", "package.json"),
     "python": ("clients/python", "pyproject.toml"),
     "golang": ("clients/go", "go.mod"),
@@ -50,6 +53,10 @@ def main() -> int:
 
     targets = manifest.get("targets")
     require(isinstance(targets, dict), ".zpkg.toml must contain a targets table")
+    require(
+        set(targets) == {"repository", *REQUIRED_TARGETS},
+        "Zed publish targets must be the canonical language packages plus repository",
+    )
 
     for target, (directory, native_manifest) in REQUIRED_TARGETS.items():
         target_config = targets.get(target)
@@ -116,7 +123,7 @@ def main() -> int:
 
     print(
         "zed-clients release set is coherent: "
-        f"{len(REQUIRED_TARGETS)} native SDK targets plus repository packaging"
+        f"{len(REQUIRED_TARGETS)} language SDK targets plus repository packaging"
     )
     return 0
 
