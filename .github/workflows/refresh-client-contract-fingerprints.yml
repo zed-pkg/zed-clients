@@ -1,0 +1,60 @@
+name: Refresh client contract fingerprints
+
+on:
+  push:
+    branches:
+      - chore/repin-rust-wasm-interfaces-20260910
+    paths:
+      - clients/rust/Cargo.toml
+      - clients/wasm/Cargo.toml
+      - clients/contract-manifest.json
+      - scripts/harden_client_contract.py
+      - .github/workflows/refresh-client-contract-fingerprints.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out candidate branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: chore/repin-rust-wasm-interfaces-20260910
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install pinned hardener dependencies
+        run: python -m pip install --disable-pip-version-check jsonschema==4.25.1 tomlkit==0.13.3
+      - name: Refresh deterministic contract evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/harden_client_contract.py \
+            --root . \
+            --schema clients/client-api.schema.json \
+            --write \
+            --output /tmp/client-contract-refresh.json
+          cat /tmp/client-contract-refresh.json
+          changed="$(git diff --name-only)"
+          test "$changed" = "clients/contract-manifest.json" || {
+            echo "unexpected hardener changes:" >&2
+            printf '%s\n' "$changed" >&2
+            exit 1
+          }
+      - name: Commit generated contract manifest only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- clients/contract-manifest.json; then
+            echo 'contract manifest already current'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add clients/contract-manifest.json
+          git commit -m 'chore: refresh client contract fingerprints'
+          git push origin HEAD:chore/repin-rust-wasm-interfaces-20260910
