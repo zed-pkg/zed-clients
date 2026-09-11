@@ -9,10 +9,11 @@ repository = "https://github.com/zed-pkg/zed-clients"
 [dependencies]
 # All Rust consumers share one exact contract crate and one exact behavior
 # crate. This keeps zed-cli, the SDK, and zed-lib on identical wire/model types.
-# Pin the current admitted interfaces main after #105. This revision includes
-# Rust source-path/API changes, so exact-head Rust/WASM gates must prove compatibility.
+# Pin the current admitted interfaces authority after #105 and the zed-lib
+# bridge admitted by zed-lib-core#51 so the direct and transitive Rust model
+# types resolve from one immutable zed-interfaces crate identity.
 zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "0c2ffa7be791a44c8aa2a69ab4b1ea87aab4729c" }
-zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "c8af76191f50ad7a177eb68740e69bdfaa652ff6" }
+zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "4509f19e1d3242226f28f842f550085864582380" }
 hex = "0.4"
 percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
