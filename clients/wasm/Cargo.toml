@@ -12,9 +12,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Keep the browser SDK on the same exact wire contract as the native SDK and
 # CLI; a sibling-only path made the crate impossible to consume standalone.
-# DEN-3495's receipt contract is independently authored in TypeSpec and Draft
-# 2020-12 JSON Schema and admitted through ORESoftware/typespec-json-schema-validator.
-zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "d11322f06ca6930ddcc34a745b4ef01e0b2bddc1" }
+# Pin the latest interfaces main revision admitted by the full TJSV/private-
+# persistence matrix. The d11322.. -> 6e8f65.. delta does not modify src/rust.
+zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "6e8f65d786330ade0cdc89f9877bba42c9e8f21a" }
 hex = "0.4"
 js-sys = "0.3"
 percent-encoding = "2"
