@@ -1472,8 +1472,24 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "zed-interfaces",
+ "zed-interfaces 0.1.0 (git+https://github.com/zed-pkg/zed-interfaces.git?rev=6e8f65d786330ade0cdc89f9877bba42c9e8f21a)",
  "zed-lib",
+]
+
+[[package]]
+name = "zed-interfaces"
+version = "0.1.0"
+source = "git+https://github.com/zed-pkg/zed-interfaces.git?rev=6e8f65d786330ade0cdc89f9877bba42c9e8f21a#6e8f65d786330ade0cdc89f9877bba42c9e8f21a"
+dependencies = [
+ "bs58",
+ "hex",
+ "schemars",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -1498,7 +1514,7 @@ version = "0.1.0"
 source = "git+https://github.com/zed-pkg/zed-lib-core.git?rev=c8af76191f50ad7a177eb68740e69bdfaa652ff6#c8af76191f50ad7a177eb68740e69bdfaa652ff6"
 dependencies = [
  "thiserror",
- "zed-interfaces",
+ "zed-interfaces 0.1.0 (git+https://github.com/zed-pkg/zed-interfaces.git?rev=d11322f06ca6930ddcc34a745b4ef01e0b2bddc1)",
 ]
 
 [[package]]
