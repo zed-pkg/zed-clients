@@ -8,8 +8,7 @@ __pycache__/
 _build/
 build/
 .dart_tool/
-.gradle/
-.zig-cache/
+clients/java/.gradle/
 clients/dart/pubspec.lock
 clients/elixir/deps/
 clients/elixir/mix.lock
@@ -20,3 +19,6 @@ tmp
 temp
 tmp/worktrees
 temp/worktrees
+
+.gradle/
+.zig-cache/
