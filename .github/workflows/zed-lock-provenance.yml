@@ -1,0 +1,78 @@
+name: Zed lock provenance
+
+on:
+  pull_request:
+    paths:
+      - '.zpkg.toml'
+      - '.zpkg.lock'
+      - '.github/workflows/zed-lock-provenance.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.zpkg.toml'
+      - '.zpkg.lock'
+      - '.github/workflows/zed-lock-provenance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lock-provenance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Require resolver-produced immutable dependency evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          root = pathlib.Path.cwd()
+          manifest = tomllib.loads((root / '.zpkg.toml').read_text())
+          lock = tomllib.loads((root / '.zpkg.lock').read_text())
+
+          assert lock.get('version') == 1, 'unsupported .zpkg.lock version'
+
+          declared = manifest.get('dependencies', {})
+          locked = lock.get('package', [])
+          if not isinstance(locked, list):
+              raise AssertionError('.zpkg.lock package entries must be an array of tables')
+
+          required_identity = {
+              'org', 'name', 'version', 'sha256', 'size', 'format',
+              'vcs_tag', 'vcs_commit', 'source',
+          }
+
+          by_coordinate = {}
+          for package in locked:
+              missing = sorted(required_identity - package.keys())
+              if missing:
+                  raise AssertionError(
+                      f"locked package {package.get('org')}/{package.get('name')} "
+                      f"is missing immutable provenance fields: {', '.join(missing)}"
+                  )
+              coordinate = f"{package['org']}/{package['name']}"
+              if coordinate in by_coordinate:
+                  raise AssertionError(f'duplicate locked coordinate: {coordinate}')
+              by_coordinate[coordinate] = package
+
+          missing_dependencies = sorted(set(declared) - set(by_coordinate))
+          if missing_dependencies:
+              raise AssertionError(
+                  'declared Zed dependencies are not represented by resolver-produced '
+                  'lock entries: ' + ', '.join(missing_dependencies)
+              )
+
+          print(
+              f"verified {len(declared)} declared Zed dependencies against "
+              f"{len(locked)} immutable lock entries"
+          )
+          PY
