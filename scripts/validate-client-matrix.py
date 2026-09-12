@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import sys
 import tomllib
 
@@ -29,10 +30,94 @@ REQUIRED_TARGETS: dict[str, tuple[str, str]] = {
     "swift": ("clients/swift", "Package.swift"),
 }
 
+PACKAGE_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+VCS_COMMIT = re.compile(r"^[A-Za-z0-9._+:/-]{7,128}$")
+
 
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def validate_lock_provenance(manifest: dict, lock: dict) -> None:
+    """Require immutable artifact identity for every locked Zed package.
+
+    Lock format v1 permits an empty package list for dependency-free projects.
+    A dependency-bearing manifest cannot use that shape as resolution evidence:
+    every direct requirement must have a canonical lock entry, and every entry
+    must pin the archive bytes and source revision required by the current Zed
+    lock schema.
+    """
+
+    dependencies = manifest.get("dependencies", {})
+    require(isinstance(dependencies, dict), ".zpkg.toml dependencies must be a table")
+    require(
+        all(
+            isinstance(name, str)
+            and name.count("/") == 1
+            and all(PACKAGE_SLUG.fullmatch(part) for part in name.split("/"))
+            for name in dependencies
+        ),
+        ".zpkg.toml dependency coordinates must be org/name slugs",
+    )
+
+    packages = lock.get("package", [])
+    require(isinstance(packages, list), ".zpkg.lock package entries must be an array")
+    locked: dict[str, dict] = {}
+    for index, package in enumerate(packages):
+        label = f".zpkg.lock package[{index}]"
+        require(isinstance(package, dict), f"{label} must be a table")
+        org = package.get("org")
+        name = package.get("name")
+        require(
+            isinstance(org, str)
+            and PACKAGE_SLUG.fullmatch(org) is not None
+            and isinstance(name, str)
+            and PACKAGE_SLUG.fullmatch(name) is not None,
+            f"{label} must contain canonical org/name slugs",
+        )
+        coordinate = f"{org}/{name}"
+        require(coordinate not in locked, f"duplicate locked package coordinate: {coordinate}")
+        require(
+            isinstance(package.get("version"), str) and bool(package["version"]),
+            f"{label} must pin a version",
+        )
+        require(
+            isinstance(package.get("sha256"), str)
+            and SHA256.fullmatch(package["sha256"]) is not None,
+            f"{label} must pin a lowercase SHA-256",
+        )
+        size = package.get("size")
+        require(
+            isinstance(size, int) and not isinstance(size, bool) and size > 0,
+            f"{label} must pin a positive artifact size",
+        )
+        require(
+            package.get("format") in {"tar.gz", "zip"},
+            f"{label} must pin tar.gz or zip format",
+        )
+        require(
+            isinstance(package.get("vcs_tag"), str) and bool(package["vcs_tag"]),
+            f"{label} must pin a VCS tag",
+        )
+        require(
+            isinstance(package.get("vcs_commit"), str)
+            and VCS_COMMIT.fullmatch(package["vcs_commit"]) is not None,
+            f"{label} must pin an immutable VCS commit",
+        )
+        require(
+            isinstance(package.get("source"), str) and bool(package["source"]),
+            f"{label} must record its resolver source",
+        )
+        locked[coordinate] = package
+
+    missing = sorted(set(dependencies).difference(locked))
+    require(
+        not missing,
+        "dependency-bearing .zpkg.lock is incomplete; missing canonical entries: "
+        + ", ".join(missing),
+    )
 
 
 def main() -> int:
@@ -46,6 +131,7 @@ def main() -> int:
         lock = tomllib.load(handle)
 
     require(lock.get("version") == 1, ".zpkg.lock must use lock format version 1")
+    validate_lock_provenance(manifest, lock)
     require(
         manifest.get("dependencies") == {"zed-pkg/zed-interfaces": "^0.1.0"},
         "zed-clients must depend only on zed-pkg/zed-interfaces",
