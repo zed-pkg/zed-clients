@@ -23,7 +23,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RIn --exclude-dir=target --exclude='lib.rs' 'reqwest::blocking' clients; then
+          matches="$(grep -RIn --exclude-dir=target 'reqwest::blocking' clients || true)"
+          unexpected="$(printf '%s\n' "$matches" | grep -v '^clients/rust/src/lib.rs:' || true)"
+          if [[ -n "$unexpected" ]]; then
+            printf '%s\n' "$unexpected" >&2
             echo 'reqwest::blocking is deprecated; use clients/rust-async.' >&2
             exit 1
           fi
@@ -34,10 +37,10 @@ jobs:
           set -euo pipefail
           base='${{ github.event.pull_request.base.sha }}'
           head='${{ github.event.pull_request.head.sha }}'
-          git diff --unified=0 "$base" "$head" -- clients \
-            | grep -E '^\+[^+].*reqwest::blocking' \
-            && {
-              echo 'new reqwest::blocking call sites are forbidden; use zed-client-async/Hyper.' >&2
-              exit 1
-            }
-          exit 0
+          additions="$(git diff --unified=0 "$base" "$head" -- clients \
+            | grep -E '^\+[^+].*reqwest::blocking' || true)"
+          if [[ -n "$additions" ]]; then
+            printf '%s\n' "$additions" >&2
+            echo 'new reqwest::blocking call sites are forbidden; use zed-client-async/Hyper.' >&2
+            exit 1
+          fi
