@@ -16,12 +16,18 @@ use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_util::client::legacy::Client as HyperClient;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use serde::de::DeserializeOwned;
 use url::Url;
 use zed_interfaces::registry::{self, ApiError, PackageMetadata, SearchResponse, VersionMetadata};
 
 pub use zed_lib::{ResolveError, resolve_version};
 
+const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const DEFAULT_MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 pub const MAX_ERROR_BODY_BYTES: u64 = 16 * 1024;
@@ -124,11 +130,19 @@ impl AsyncClient {
     }
 
     pub async fn get_package(&self, org: &str, name: &str) -> Result<PackageMetadata> {
-        let path = registry::package_path(&checked_segment(org, "org")?, &checked_segment(name, "name")?);
+        let path = registry::package_path(
+            &checked_segment(org, "org")?,
+            &checked_segment(name, "name")?,
+        );
         self.get_json(&path, "package metadata").await
     }
 
-    pub async fn get_version(&self, org: &str, name: &str, version: &str) -> Result<VersionMetadata> {
+    pub async fn get_version(
+        &self,
+        org: &str,
+        name: &str,
+        version: &str,
+    ) -> Result<VersionMetadata> {
         let path = registry::version_path(
             &checked_segment(org, "org")?,
             &checked_segment(name, "name")?,
@@ -149,7 +163,8 @@ impl AsyncClient {
     }
 
     pub async fn search(&self, query: &str) -> Result<SearchResponse> {
-        let mut url = Url::parse(&self.url(&registry::search_path())).map_err(|_| Error::InvalidBaseUrl)?;
+        let mut url =
+            Url::parse(&self.url(&registry::search_path())).map_err(|_| Error::InvalidBaseUrl)?;
         url.query_pairs_mut().append_pair("q", query);
         self.get_json_url(url, "search response").await
     }
@@ -165,7 +180,10 @@ impl AsyncClient {
             .parse()
             .map_err(|error| Error::Transport(format!("invalid request URI: {error}")))?;
         let request = Request::get(uri)
-            .header(USER_AGENT, concat!("zed-client-async-rust/", env!("CARGO_PKG_VERSION")))
+            .header(
+                USER_AGENT,
+                concat!("zed-client-async-rust/", env!("CARGO_PKG_VERSION")),
+            )
             .header(ACCEPT, "application/json")
             .body(Empty::<Bytes>::new())
             .map_err(|error| Error::Transport(format!("building request: {error}")))?;
@@ -177,7 +195,11 @@ impl AsyncClient {
         self.decode_json(response, what).await
     }
 
-    async fn decode_json<T: DeserializeOwned>(&self, response: Response<Incoming>, what: &str) -> Result<T> {
+    async fn decode_json<T: DeserializeOwned>(
+        &self,
+        response: Response<Incoming>,
+        what: &str,
+    ) -> Result<T> {
         let status = response.status();
         let limit = if status.is_success() {
             self.max_response_bytes
@@ -238,7 +260,11 @@ fn api_error(status: StatusCode, body: &[u8]) -> Error {
 
 fn checked_segment(segment: &str, name: &str) -> Result<String> {
     validate_segment(segment, name)?;
-    Ok(percent_encoding::utf8_percent_encode(segment, percent_encoding::NON_ALPHANUMERIC).to_string())
+    Ok(match segment {
+        "." => "%2E".to_string(),
+        ".." => "%2E%2E".to_string(),
+        _ => utf8_percent_encode(segment, SEGMENT).to_string(),
+    })
 }
 
 fn validate_segment<'a>(segment: &'a str, name: &str) -> Result<&'a str> {
@@ -246,25 +272,37 @@ fn validate_segment<'a>(segment: &'a str, name: &str) -> Result<&'a str> {
         return Err(Error::InvalidInput(format!("{name} must not be blank")));
     }
     if matches!(segment, "." | "..") {
-        return Err(Error::InvalidInput(format!("{name} must not be a dot segment")));
+        return Err(Error::InvalidInput(format!(
+            "{name} must not be a dot segment"
+        )));
     }
     if segment.len() > MAX_SEGMENT_BYTES {
-        return Err(Error::InvalidInput(format!("{name} exceeds {MAX_SEGMENT_BYTES} UTF-8 bytes")));
+        return Err(Error::InvalidInput(format!(
+            "{name} exceeds {MAX_SEGMENT_BYTES} UTF-8 bytes"
+        )));
     }
     if segment.chars().any(char::is_control) {
-        return Err(Error::InvalidInput(format!("{name} must not contain control characters")));
+        return Err(Error::InvalidInput(format!(
+            "{name} must not contain control characters"
+        )));
     }
     Ok(segment)
 }
 
 fn validate_path_segments(path: &str, name: &str) -> Result<()> {
-    for (index, segment) in path.split('/').filter(|segment| !segment.is_empty()).enumerate() {
-        let decoded = percent_encoding::percent_decode_str(segment)
-            .decode_utf8()
-            .map_err(|_| Error::InvalidInput(format!("{name} contains invalid percent encoding")))?;
+    for (index, segment) in path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .enumerate()
+    {
+        let decoded = percent_decode_str(segment).decode_utf8().map_err(|_| {
+            Error::InvalidInput(format!("{name} contains invalid percent encoding"))
+        })?;
         validate_segment(&decoded, &format!("{name} segment {}", index + 1))?;
         if decoded.contains('/') || decoded.contains('\\') {
-            return Err(Error::InvalidInput(format!("{name} segments must not contain encoded separators")));
+            return Err(Error::InvalidInput(format!(
+                "{name} segments must not contain encoded separators"
+            )));
         }
     }
     Ok(())
