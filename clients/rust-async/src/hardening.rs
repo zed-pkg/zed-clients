@@ -106,9 +106,8 @@ impl RateLimitInfo {
         let remaining = header_u64(headers, "x-ratelimit-remaining");
         let reset_unix_seconds = header_u64(headers, "x-ratelimit-reset");
         let resource = safe_header_text(headers, "x-ratelimit-resource", 64);
-        let limited = status == 429
-            || (status == 403 && remaining == Some(0))
-            || retry_after.is_some();
+        let limited =
+            status == 429 || (status == 403 && remaining == Some(0)) || retry_after.is_some();
         Self {
             limited,
             retry_after,
@@ -128,10 +127,7 @@ fn header_u64(headers: &HeaderMap, name: &str) -> Option<u64> {
 
 fn safe_header_text(headers: &HeaderMap, name: &str, max: usize) -> Option<String> {
     let value = headers.get(name)?.to_str().ok()?.trim();
-    if value.is_empty()
-        || value.len() > max
-        || value.chars().any(|ch| ch.is_control())
-    {
+    if value.is_empty() || value.len() > max || value.chars().any(|ch| ch.is_control()) {
         return None;
     }
     Some(value.to_string())
@@ -260,11 +256,7 @@ pub fn strong_etag(headers: &HeaderMap) -> Option<String> {
 
 /// Validate `Content-Range: bytes start-end/total` for a resume request.
 #[must_use]
-pub fn valid_content_range(
-    value: &str,
-    expected_start: u64,
-    expected_total: Option<u64>,
-) -> bool {
+pub fn valid_content_range(value: &str, expected_start: u64, expected_total: Option<u64>) -> bool {
     let Some(rest) = value.strip_prefix("bytes ") else {
         return false;
     };
@@ -331,13 +323,34 @@ mod tests {
 
     #[test]
     fn classifies_non_public_destinations() {
-        assert_eq!(classify_ip("127.0.0.1".parse().unwrap()), DestinationClass::Loopback);
-        assert_eq!(classify_ip("10.1.2.3".parse().unwrap()), DestinationClass::Private);
-        assert_eq!(classify_ip("169.254.1.2".parse().unwrap()), DestinationClass::LinkLocal);
-        assert_eq!(classify_ip("100.64.1.2".parse().unwrap()), DestinationClass::CarrierGradeNat);
-        assert_eq!(classify_ip("::1".parse().unwrap()), DestinationClass::Loopback);
-        assert_eq!(classify_ip("fd00::1".parse().unwrap()), DestinationClass::Private);
-        assert_eq!(classify_ip("2606:4700:4700::1111".parse().unwrap()), DestinationClass::Public);
+        assert_eq!(
+            classify_ip("127.0.0.1".parse().unwrap()),
+            DestinationClass::Loopback
+        );
+        assert_eq!(
+            classify_ip("10.1.2.3".parse().unwrap()),
+            DestinationClass::Private
+        );
+        assert_eq!(
+            classify_ip("169.254.1.2".parse().unwrap()),
+            DestinationClass::LinkLocal
+        );
+        assert_eq!(
+            classify_ip("100.64.1.2".parse().unwrap()),
+            DestinationClass::CarrierGradeNat
+        );
+        assert_eq!(
+            classify_ip("::1".parse().unwrap()),
+            DestinationClass::Loopback
+        );
+        assert_eq!(
+            classify_ip("fd00::1".parse().unwrap()),
+            DestinationClass::Private
+        );
+        assert_eq!(
+            classify_ip("2606:4700:4700::1111".parse().unwrap()),
+            DestinationClass::Public
+        );
     }
 
     #[test]
@@ -358,7 +371,10 @@ mod tests {
     fn resume_requires_strong_etag_and_exact_content_range() {
         let mut headers = HeaderMap::new();
         headers.insert(ETAG, HeaderValue::from_static("\"immutable-object\""));
-        assert_eq!(strong_etag(&headers).as_deref(), Some("\"immutable-object\""));
+        assert_eq!(
+            strong_etag(&headers).as_deref(),
+            Some("\"immutable-object\"")
+        );
         headers.insert(ETAG, HeaderValue::from_static("W/\"weak\""));
         assert!(strong_etag(&headers).is_none());
 
