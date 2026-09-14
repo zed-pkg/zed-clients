@@ -8,5 +8,8 @@ mod hardening;
 fn hardening_contract_module_is_executable() {
     let budget = hardening::RecoveryBudget::new(std::time::Duration::from_secs(1));
     assert!(!budget.exhausted());
-    assert!(budget.child_timeout(std::time::Duration::from_secs(30)) <= std::time::Duration::from_secs(1));
+    assert!(
+        budget.child_timeout(std::time::Duration::from_secs(30))
+            <= std::time::Duration::from_secs(1)
+    );
 }
