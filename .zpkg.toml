@@ -2,7 +2,6 @@
 org = "zed-pkg"
 name = "zed-clients"
 version = "0.1.0"
-kind = "sdk"
 description = "Official polyglot clients for the Zed package registry"
 license = "MIT"
 keywords = ["clients", "sdk", "polyglot", "zed"]
