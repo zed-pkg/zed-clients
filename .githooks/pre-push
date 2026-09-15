@@ -5,14 +5,19 @@ cd "$repo_root"
 if [[ "${1:-}" == "--install" ]]; then chmod +x .githooks/pre-push; git config core.hooksPath .githooks; echo 'installed Zed pre-push hook'; exit 0; fi
 [[ -f .zpkg.toml ]] || exit 0
 command -v zed >/dev/null 2>&1 || { echo 'zed CLI is required' >&2; exit 1; }
-[[ -f .zpkg.lock ]] || { echo '.zpkg.lock is required; run zed install and commit it' >&2; exit 1; }
-zed validate --require-lock
+[[ -f .zpkg.lock ]] || { echo '.zpkg.lock is required for this dependency-bearing package; run zed install and commit resolver output' >&2; exit 1; }
+
+# Resolve first. A tracked but stale/incomplete lock must be allowed to become
+# concrete resolver output so CI can report the exact provenance delta instead
+# of failing before resolution. The gate still fails unless the committed lock
+# is byte-for-byte current after resolution.
 zed install
-if ! git diff --quiet -- .zpkg.lock; then
-  echo 'Zed dependency lock is stale relative to the newest versions allowed by .zpkg.toml.' >&2
-  git --no-pager diff -- .zpkg.lock >&2 || true
+if ! git diff --quiet HEAD -- .zpkg.lock; then
+  echo 'Zed dependency lock differs from resolver output; commit the generated immutable provenance before merge.' >&2
+  git --no-pager diff HEAD -- .zpkg.lock >&2 || true
   exit 1
 fi
+zed validate --require-lock
 zed install --frozen
 zed build
 if [[ -f Cargo.toml ]]; then if [[ -f Cargo.lock ]]; then zed develop --no-install -c 'cargo check --locked --all-targets'; else zed develop --no-install -c 'cargo check --all-targets'; fi; fi
