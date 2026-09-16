@@ -19,6 +19,7 @@ dir = ".vendor/.zed"
 [publish]
 include_readme = true
 tag_format = "v{version}"
+smoke_test = "sh \"$ZED_PKG_TEST_TARGET/scripts/tests/smoke-published-artifact.sh\""
 exclude = [".vendor/.zed/**"]
 
 # Whole-repository release surface. Consumers should select a language slice.
