@@ -14,7 +14,7 @@ url = "https://github.com/zed-pkg/zed-clients"
 dir = ".vendor/.zed"
 
 [dependencies]
-"zed-pkg/zed-interfaces" = "^0.1.0"
+"zed-pkg/zed-interfaces" = "^0.1.1"
 
 [publish]
 include_readme = true
