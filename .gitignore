@@ -22,3 +22,7 @@ temp/worktrees
 
 .gradle/
 .zig-cache/
+
+# Sanctioned scratch locations - AGENTS.md requires both, trailing-slash form
+tmp/
+temp/
