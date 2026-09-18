@@ -1,0 +1,76 @@
+name: DEN-3282 repin native generated state
+
+on:
+  push:
+    branches: ["den-3282-align-interfaces-lib-20260918"]
+    paths:
+      - "clients/rust/Cargo.toml"
+      - "clients/wasm/Cargo.toml"
+      - ".github/workflows/rust-git-consumer-boundary.yml"
+      - ".github/workflows/den-3282-repin-native-generated.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: den-3282-align-interfaces-lib-20260918
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - name: Install deterministic contract-generator dependencies
+        run: python -m pip install --disable-pip-version-check jsonschema==4.25.1 tomlkit==0.13.3
+      - name: Regenerate Rust and WASM locks from authored pins
+        run: |
+          set -euo pipefail
+          grep -F 'aa0f87be13cdf003600b42a6088202898fcbae8d' clients/rust/Cargo.toml
+          grep -F '74224ea2e125adede0b3b58676d8a089e5250788' clients/rust/Cargo.toml
+          grep -F 'aa0f87be13cdf003600b42a6088202898fcbae8d' clients/wasm/Cargo.toml
+          cargo generate-lockfile --manifest-path clients/rust/Cargo.toml
+          cargo generate-lockfile --manifest-path clients/wasm/Cargo.toml
+          cargo test --locked --manifest-path clients/rust/Cargo.toml
+          cargo test --locked --manifest-path clients/wasm/Cargo.toml
+          cargo check --locked --manifest-path clients/wasm/Cargo.toml --target wasm32-unknown-unknown
+          grep -F 'aa0f87be13cdf003600b42a6088202898fcbae8d' clients/rust/Cargo.lock
+          grep -F '74224ea2e125adede0b3b58676d8a089e5250788' clients/rust/Cargo.lock
+          grep -F 'aa0f87be13cdf003600b42a6088202898fcbae8d' clients/wasm/Cargo.lock
+      - name: Regenerate canonical client implementation evidence
+        run: |
+          set -euo pipefail
+          python scripts/harden_client_contract.py \
+            --root . \
+            --schema schemas/client-api.schema.json \
+            --write
+          python scripts/verify_client_contract.py
+      - name: Commit only approved generated outputs and remove this workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/den-3282-repin-native-generated.yml
+          changed="$(git status --short)"
+          printf '%s\n' "$changed"
+          unexpected="$(printf '%s\n' "$changed" | grep -vE '^ M clients/rust/Cargo.lock$|^ M clients/wasm/Cargo.lock$|^ M clients/contract-manifest.json$|^ D \.github/workflows/den-3282-repin-native-generated\.yml$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "unexpected generator delta:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          git config user.name "ORESoftware"
+          git config user.email "alex@oresoftware.com"
+          git add \
+            clients/rust/Cargo.lock \
+            clients/wasm/Cargo.lock \
+            clients/contract-manifest.json \
+            .github/workflows/den-3282-repin-native-generated.yml
+          git commit -m "DEN-3282: regenerate client locks and contract evidence"
+          git push origin HEAD:den-3282-align-interfaces-lib-20260918
