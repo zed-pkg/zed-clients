@@ -1,0 +1,10 @@
+{
+  "schema": "ores.conformance.bootstrap/v1",
+  "repository": "zed-pkg/zed-clients",
+  "id": "authority-boundary",
+  "status": "bootstrap-only",
+  "notes": [
+    "Policy metadata only; not a behavioral case.",
+    "Upstream authority pins are checked against consumed Rust dependency revisions."
+  ]
+}
