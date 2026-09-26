@@ -1,6 +1,6 @@
 {
   "name": "@zed-pkg/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for the zed-pkg registry (zero runtime deps)",
   "license": "MIT",
   "repository": "github:zed-pkg/zed-clients",

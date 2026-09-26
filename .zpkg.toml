@@ -1,7 +1,7 @@
 [package]
 org = "zed-pkg"
 name = "zed-clients"
-version = "0.1.0"
+version = "0.1.1"
 description = "Official polyglot clients for the Zed package registry"
 license = "MIT"
 keywords = ["clients", "sdk", "polyglot", "zed"]
@@ -14,7 +14,7 @@ url = "https://github.com/zed-pkg/zed-clients"
 dir = ".vendor/.zed"
 
 [dependencies]
-"zed-pkg/zed-interfaces" = "^0.1.0"
+"zed-pkg/zed-interfaces" = "^0.1.1"
 
 [publish]
 include_readme = true
