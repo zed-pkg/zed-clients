@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(zed_pkg_client_cpp VERSION 0.1.0 LANGUAGES CXX)
+project(zed_pkg_client_cpp VERSION 0.1.1 LANGUAGES CXX)
 
 add_library(zed_pkg_client INTERFACE)
 target_include_directories(

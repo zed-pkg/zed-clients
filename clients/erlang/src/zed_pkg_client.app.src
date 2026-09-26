@@ -1,6 +1,6 @@
 {application, zed_pkg_client, [
     {description, "Erlang SDK for the zed-pkg registry (stdlib only: httpc + json + crypto)"},
-    {vsn, "0.1.0"},
+    {vsn, "0.1.1"},
     {registered, []},
     {applications, [kernel, stdlib, inets, ssl, crypto]},
     {env, []},

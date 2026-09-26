@@ -6,7 +6,7 @@
 
   <groupId>tech.zpkg</groupId>
   <artifactId>zed-client</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <name>Zed Registry Java Client</name>
   <description>Typed Java client for the zed-pkg registry core lifecycle.</description>
   <url>https://github.com/zed-pkg/zed-clients</url>

@@ -1,5 +1,5 @@
 name = "zed_pkg_client"
-version = "0.1.0"
+version = "0.1.1"
 description = "Gleam SDK for the zed-pkg registry."
 licences = ["MIT"]
 repository = { type = "github", user = "zed-pkg", repo = "zed-clients" }

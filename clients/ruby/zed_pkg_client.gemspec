@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name = "zed_pkg_client"
-  spec.version = "0.1.0"
+  spec.version = "0.1.1"
   spec.summary = "Ruby client for the zed-pkg registry"
   spec.authors = ["zed-pkg contributors"]
   spec.license = "MIT"
