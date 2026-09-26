@@ -11,9 +11,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Keep the browser SDK on the same exact wire contract as the native SDK and
-# CLI; a sibling-only path made the crate impossible to consume standalone.
-# Pin the reviewed DEN-3282 interface authority. This revision includes
-# Rust source-path/API changes, so exact-head Rust/WASM gates must prove compatibility.
+# CLI. DEN-3282 advances this standalone crate to the merged typed source-
+# composition authority so browser and native clients cannot drift by revision.
 zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "aa0f87be13cdf003600b42a6088202898fcbae8d" }
 hex = "0.4"
 js-sys = "0.3"
