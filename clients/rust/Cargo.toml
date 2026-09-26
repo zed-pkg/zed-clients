@@ -8,12 +8,11 @@ repository = "https://github.com/zed-pkg/zed-clients"
 
 [dependencies]
 # All Rust consumers share one exact contract crate and one exact behavior
-# crate. This keeps zed-cli, the SDK, and zed-lib on identical wire/model types.
-# Pin the reviewed DEN-3282 interface authority and the zed-lib
-# bridge that consumes that same exact authority so the direct and transitive Rust model
-# types resolve from one immutable zed-interfaces crate identity.
+# crate. DEN-3282 advances both together: zed-interfaces#138 owns the typed
+# source-composition contract, and zed-lib-core#71 is the first merged behavior
+# producer compiled against that same immutable interface identity.
 zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "aa0f87be13cdf003600b42a6088202898fcbae8d" }
-zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "3ddec299e490f1a016e242eac32e5070bc0d0131" }
+zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "74224ea2e125adede0b3b58676d8a089e5250788" }
 hex = "0.4"
 percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
