@@ -49,7 +49,7 @@
       "coordinate": "zed-pkg/zed-clients",
       "dir": "clients/wasm",
       "implementationFileCount": 3,
-      "implementationSha256": "bb57fa0dff8724c1284250e418b23a0cda3cb5e02ed478b97b6ff30b23a85106",
+      "implementationSha256": "b6641c6b09decd8e07cc3a231112ef74a5449e9ba579f7159eb367204e71260d",
       "runtime": "wasm",
       "schemaId": "https://zpkg.tech/schemas/client-api.schema.json",
       "schemaVersion": 1,
