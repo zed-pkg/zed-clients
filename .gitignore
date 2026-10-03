@@ -19,3 +19,6 @@ tmp
 temp
 tmp/worktrees
 temp/worktrees
+
+.gradle/
+.zig-cache/

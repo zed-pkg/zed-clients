@@ -7,7 +7,12 @@ license = "MIT"
 repository = "https://github.com/zed-pkg/zed-clients"
 
 [dependencies]
-zed-interfaces = { path = "../../../zed-interfaces/src/rust" }
+# All Rust consumers share one exact contract crate and one exact behavior
+# crate. This keeps zed-cli, the SDK, and zed-lib on identical wire/model types.
+# Pin the source-composition interfaces authority and the zed-lib revision that
+# consumes that same immutable crate identity so nominal Rust types cannot split.
+zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "aa0f87be13cdf003600b42a6088202898fcbae8d" }
+zed-lib = { git = "https://github.com/zed-pkg/zed-lib-core.git", rev = "3ddec299e490f1a016e242eac32e5070bc0d0131" }
 hex = "0.4"
 percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }

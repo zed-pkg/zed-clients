@@ -18,6 +18,9 @@
         "toolchains"
         "preflight"
         "contract"
+        "c"
+        "cpp"
+        "zig"
         "typescript"
         "python"
         "go"
@@ -38,7 +41,12 @@
 
       runtimePackagesFor = pkgs: {
         node = pkgs.lib.attrByPath [ "nodejs_22" ] pkgs.nodejs pkgs;
-        python = pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs;
+        python = (pkgs.lib.attrByPath [ "python312" ] pkgs.python3 pkgs).withPackages (
+          pythonPackages: with pythonPackages; [
+            jsonschema
+            tomlkit
+          ]
+        );
         erlang = pkgs.lib.attrByPath [ "beam27Packages" "erlang" ] pkgs.erlang pkgs;
         elixir = pkgs.lib.attrByPath [ "beam27Packages" "elixir_1_17" ] pkgs.elixir pkgs;
         swift = pkgs.swiftPackages.swift;
@@ -77,6 +85,7 @@
               (with pkgs; [
                 actionlint
                 cargo
+                cmake
                 dart
                 gleam
                 go
@@ -92,6 +101,7 @@
                 shellcheck
                 shfmt
                 wasm-pack
+                zig
                 runtime.node
                 runtime.python
                 runtime.erlang
@@ -111,6 +121,14 @@
               ]
             else if stage == "contract" then
               [ runtime.python ]
+            else if stage == "c" || stage == "cpp" then
+              with pkgs;
+              [
+                cmake
+                gcc
+              ]
+            else if stage == "zig" then
+              [ pkgs.zig ]
             else if stage == "typescript" then
               [ runtime.node ]
             else if stage == "python" then
@@ -186,6 +204,7 @@
           ++ (with pkgs; [
             actionlint
             cargo
+            cmake
             curl
             dart
             gcc
@@ -205,6 +224,7 @@
             shellcheck
             shfmt
             wasm-pack
+            zig
           ])
           ++ [
             runtime.node

@@ -1,7 +1,7 @@
 [package]
 org = "zed-pkg"
 name = "zed-clients"
-version = "0.1.0"
+version = "0.1.1"
 description = "Official polyglot clients for the Zed package registry"
 license = "MIT"
 keywords = ["clients", "sdk", "polyglot", "zed"]
@@ -19,20 +19,12 @@ dir = ".vendor/.zed"
 [publish]
 include_readme = true
 tag_format = "v{version}"
+smoke_test = "sh \"$ZED_PKG_TEST_TARGET/scripts/tests/smoke-published-artifact.sh\""
 exclude = [".vendor/.zed/**"]
 
 # Whole-repository release surface. Consumers should select a language slice.
 [targets.repository]
 dir = "."
-
-[targets.nodejs]
-dir = "clients/typescript"
-name = "zed-clients-nodejs"
-adapter = "node"
-
-[targets.python]
-dir = "clients/python"
-adapter = "none"
 
 [targets.golang]
 dir = "clients/go"
@@ -55,10 +47,6 @@ adapter = "node"
 
 [targets.dart]
 dir = "clients/dart"
-adapter = "none"
-
-[targets.gleam]
-dir = "clients/gleam"
 adapter = "none"
 
 [targets.erlang]
@@ -98,3 +86,28 @@ adapter = "none"
 [targets.swift]
 dir = "clients/swift"
 adapter = "none"
+
+[targets.c]
+dir = "clients/c"
+adapter = "none"
+
+[targets.cpp]
+dir = "clients/cpp"
+adapter = "none"
+
+[targets.zig]
+dir = "clients/zig"
+adapter = "none"
+
+[targets.gleam]
+dir = "clients/gleam"
+adapter = "none"
+
+[targets.python]
+dir = "clients/python"
+adapter = "none"
+
+[targets.nodejs]
+dir = "clients/typescript"
+name = "zed-clients-nodejs"
+adapter = "node"

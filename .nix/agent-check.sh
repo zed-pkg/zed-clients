@@ -48,12 +48,13 @@ require_interfaces_checkout() {
   fi
 }
 
-run_unlocked_cargo_tests() {
+run_locked_cargo_tests() {
   if [[ ! -f Cargo.lock ]]; then
-    trap 'rm -f Cargo.lock' EXIT
+    printf 'tracked Cargo.lock is required for reproducible Rust checks\n' >&2
+    return 1
   fi
   cargo fmt --check
-  cargo test
+  cargo test --locked
 }
 
 run_stage() {
@@ -64,8 +65,8 @@ run_stage() {
     toolchains)
       local command_name
       for command_name in \
-        actionlint cargo dart elixir gleam go java jq mix mvn nix nixfmt node npm \
-        php python3 rebar3 ruby rustc rustfmt shellcheck shfmt swift; do
+        actionlint cargo cmake ctest dart elixir gleam go java jq mix mvn nix nixfmt node npm \
+        php python3 rebar3 ruby rustc rustfmt shellcheck shfmt swift zig; do
         require_command "$command_name"
       done
       node --version
@@ -74,6 +75,8 @@ run_stage() {
       go version
       rustc --version
       cargo --version
+      cmake --version
+      zig version
       dart --version
       gleam --version
       rebar3 version
@@ -98,6 +101,28 @@ run_stage() {
       ;;
     contract)
       python3 scripts/validate-client-matrix.py
+      python3 scripts/harden_client_contract.py \
+        --schema schemas/client-api.schema.json \
+        --check
+      python3 -m unittest -v \
+        tests.test_harden_client_contract \
+        tests.test_target_name_migration
+      ;;
+    c)
+      cmake -S clients/c -B "$cache_root/c-build"
+      cmake --build "$cache_root/c-build"
+      ;;
+    cpp)
+      cmake -S clients/cpp -B "$cache_root/cpp-build" -DZED_PKG_BUILD_TESTS=ON
+      cmake --build "$cache_root/cpp-build"
+      ctest --test-dir "$cache_root/cpp-build" --output-on-failure
+      ;;
+    zig)
+      (
+        cd clients/zig
+        zig fmt --check build.zig src/client.zig
+        zig build test
+      )
       ;;
     typescript)
       (
@@ -130,14 +155,14 @@ run_stage() {
       require_interfaces_checkout
       (
         cd clients/rust
-        run_unlocked_cargo_tests
+        run_locked_cargo_tests
       )
       ;;
     wasm)
       require_interfaces_checkout
       (
         cd clients/wasm
-        run_unlocked_cargo_tests
+        run_locked_cargo_tests
       )
       ;;
     dart)
@@ -211,10 +236,10 @@ run_stage() {
         fi
         "$SWIFT_EXEC" --version
         swift build
-        if [[ "$(uname -s)" == "Darwin" ]]; then
+        if printf 'import XCTest\n' | "$SWIFT_EXEC" -typecheck - >/dev/null 2>&1; then
           swift test --parallel
         else
-          printf 'Swift XCTest is unavailable in the pinned Linux toolchain; build succeeded.
+          printf 'Swift XCTest is unavailable in the pinned toolchain; build succeeded.
 '
         fi
       )
@@ -222,7 +247,7 @@ run_stage() {
     sdk)
       local sdk_stage
       for sdk_stage in \
-        typescript python go rust wasm dart gleam erlang elixir java kotlin ruby php swift; do
+        c cpp zig typescript python go rust wasm dart gleam erlang elixir java kotlin ruby php swift; do
         run_stage "$sdk_stage"
       done
       ;;
@@ -240,12 +265,12 @@ run_stage() {
 }
 
 case "${1:-all}" in
-  all | toolchains | preflight | contract | sdk | typescript | python | go | rust | wasm | dart | gleam | erlang | elixir | java | kotlin | ruby | php | swift)
+  all | toolchains | preflight | contract | sdk | c | cpp | zig | typescript | python | go | rust | wasm | dart | gleam | erlang | elixir | java | kotlin | ruby | php | swift)
     run_stage "${1:-all}"
     ;;
   *)
     printf '%s\n' \
-      'usage: agent-check [all|toolchains|preflight|contract|sdk|typescript|python|go|rust|wasm|dart|gleam|erlang|elixir|java|kotlin|ruby|php|swift]' >&2
+      'usage: agent-check [all|toolchains|preflight|contract|sdk|c|cpp|zig|typescript|python|go|rust|wasm|dart|gleam|erlang|elixir|java|kotlin|ruby|php|swift]' >&2
     exit 64
     ;;
 esac

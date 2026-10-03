@@ -11,6 +11,7 @@ on:
       - .zpkg.lock
       - scripts/validate-client-matrix.py
       - clients/**
+      - contract-admission/**
       - README.md
       - agents.md
       - .github/workflows/nix.yml
@@ -23,6 +24,7 @@ on:
       - .zpkg.lock
       - scripts/validate-client-matrix.py
       - clients/**
+      - contract-admission/**
       - README.md
       - agents.md
       - .github/workflows/nix.yml
@@ -47,6 +49,9 @@ jobs:
           - toolchains
           - preflight
           - contract
+          - c
+          - cpp
+          - zig
           - typescript
           - python
           - go
@@ -66,14 +71,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: zed-clients
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           show-progress: false
+
+      - name: Verify reviewed client head
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git -C zed-clients rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Check out the exact compatible interface contract
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zed-pkg/zed-interfaces
-          ref: 5394b2e7b070354ee79a4c6ac79c26d6264970cd
+          ref: 2c8c240a51e80ea34bd74e89b4e92c13b26d309f
           path: zed-interfaces
           persist-credentials: false
           show-progress: false
@@ -82,7 +94,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C zed-interfaces rev-parse HEAD)" = 5394b2e7b070354ee79a4c6ac79c26d6264970cd
+          test "$(git -C zed-interfaces rev-parse HEAD)" = 2c8c240a51e80ea34bd74e89b4e92c13b26d309f
           test -f zed-interfaces/src/rust/Cargo.toml
 
       - name: Install Nix
