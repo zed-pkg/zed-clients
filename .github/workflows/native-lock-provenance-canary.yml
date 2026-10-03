@@ -29,11 +29,11 @@ jobs:
           persist-credentials: false
           show-progress: false
 
-      - name: Check out exact lock-provenance candidate
+      - name: Check out exact current lock-provenance contract
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: zed-pkg/zed-interfaces
-          ref: a23cdd2ac509a39ca6fd6d21a3774fdd3a0f7660
+          ref: 5394b2e7b070354ee79a4c6ac79c26d6264970cd
           path: zed-interfaces
           persist-credentials: false
           show-progress: false
@@ -45,17 +45,17 @@ jobs:
           components: rustfmt,clippy
 
       - name: Verify the exact product contract
-        working-directory: zed-interfaces
+        working-directory: zed-interfaces/src/rust
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = a23cdd2ac509a39ca6fd6d21a3774fdd3a0f7660
+          test "$(git -C ../.. rev-parse HEAD)" = 5394b2e7b070354ee79a4c6ac79c26d6264970cd
           cargo fmt --all -- --check
           cargo test --locked --all-targets
           cargo clippy --locked --all-targets --all-features -- -D warnings
-          cp schemas/lockfile.json "$RUNNER_TEMP/lockfile.json"
+          cp ../../schemas/lockfile.json "$RUNNER_TEMP/lockfile.json"
           cargo run --locked --example generate_schemas
-          cmp "$RUNNER_TEMP/lockfile.json" schemas/lockfile.json
-          git diff --exit-code
+          cmp "$RUNNER_TEMP/lockfile.json" ../../schemas/lockfile.json
+          git -C ../.. diff --exit-code
 
       - name: Execute the external consumer locked and offline
         run: |

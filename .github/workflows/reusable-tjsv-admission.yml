@@ -1,0 +1,28 @@
+name: Reusable TJSV admission canary
+
+on:
+  pull_request:
+    paths:
+      - 'contract-admission/fixtures/package-ref/**'
+      - '.github/workflows/reusable-tjsv-admission.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contract-admission/fixtures/package-ref/**'
+      - '.github/workflows/reusable-tjsv-admission.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  admission:
+    uses: zed-pkg/.github/.github/workflows/reusable-tjsv-admission.yml@984924ead3a222a0e99928b2bcdbd87664745acf
+    with:
+      typespec: contract-admission/fixtures/package-ref/main.tsp
+      schema: contract-admission/fixtures/package-ref/authored.schema.json
+      expected_declarations: '["Zed.Admission.PackageRef"]'
+      seal_object_schemas: "false"
+      artifact_name: zed-clients-reusable-tjsv
+
+# DEN-3828 / zed-pkg/.github#67. This is additive migration evidence.
+# The specialized client guard, real compiler tests, Nix and native SDK gates remain.

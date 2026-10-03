@@ -5,6 +5,7 @@ defmodule ZedPkgClient do
   @max_json_bytes 16 * 1024 * 1024
   @max_artifact_bytes 100 * 1024 * 1024
 
+  @derive {Inspect, except: [:token]}
   defstruct [:base_url, :token, timeout: 30_000]
 
   defmodule Error do
@@ -129,10 +130,10 @@ defmodule ZedPkgClient do
   end
 
   defp headers(client, auth) do
-    base = [{'accept', 'application/json'}]
+    base = [{~c"accept", ~c"application/json"}]
 
     if auth and is_binary(client.token) and client.token != "" do
-      [{'authorization', String.to_charlist("Bearer " <> client.token)} | base]
+      [{~c"authorization", String.to_charlist("Bearer " <> client.token)} | base]
     else
       base
     end

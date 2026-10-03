@@ -289,7 +289,7 @@ final class ZedClientTests: XCTestCase {
 func testRelativeDownloadURLPreservesGatewayAndUppercaseDigest() async throws {
     let artifact = Data("abc".utf8)
     let recorder = RequestRecorder()
-    StubURLProtocol.handler = { request in
+    StubTransport.handler = { request in
         recorder.append(request)
         return StubResponse(status: 200, body: artifact)
     }
@@ -316,7 +316,7 @@ func testRelativeDownloadURLPreservesGatewayAndUppercaseDigest() async throws {
 }
 
 func testBlankStructuredErrorCodeFallsBackToHTTPStatus() async throws {
-    StubURLProtocol.handler = { _ in
+    StubTransport.handler = { _ in
         StubResponse(
             status: 409,
             body: Data(#"{"code":"   ","message":"remote detail"}"#.utf8)

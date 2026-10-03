@@ -43,25 +43,27 @@ jobs:
 
           path = Path('clients/go/nix_adapter.go')
           text = path.read_text()
-          old = '''\tcase []any:
-\t\tfor _, child := range typed {
-\t\t\tif err := rejectUnexpectedNulls(child, path); err != nil {
-\t\t\t\treturn err
-\t\t\t}
-\t}
-\treturn nil
-}
-'''
-          new = '''\tcase []any:
-\t\tfor _, child := range typed {
-\t\t\tif err := rejectUnexpectedNulls(child, path); err != nil {
-\t\t\t\treturn err
-\t\t\t}
-\t\t}
-\t}
-\treturn nil
-}
-'''
+          old = (
+              '\tcase []any:\n'
+              '\t\tfor _, child := range typed {\n'
+              '\t\t\tif err := rejectUnexpectedNulls(child, path); err != nil {\n'
+              '\t\t\t\treturn err\n'
+              '\t\t\t}\n'
+              '\t}\n'
+              '\treturn nil\n'
+              '}\n'
+          )
+          new = (
+              '\tcase []any:\n'
+              '\t\tfor _, child := range typed {\n'
+              '\t\t\tif err := rejectUnexpectedNulls(child, path); err != nil {\n'
+              '\t\t\t\treturn err\n'
+              '\t\t\t}\n'
+              '\t\t}\n'
+              '\t}\n'
+              '\treturn nil\n'
+              '}\n'
+          )
           count = text.count(old)
           if count != 1:
               raise SystemExit(f'expected one unclosed type-switch anchor, found {count}')
