@@ -1,0 +1,65 @@
+name: Zed registry lock provenance probe (non-promoting)
+on:
+  pull_request:
+    paths:
+      - '.zpkg.toml'
+      - '.zpkg.lock'
+      - '.github/workflows/zpkg-registry-lock-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe-published-interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Fetch public registry version without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --connect-timeout 10 --max-time 35 \
+            'https://zpkg.net/v1/packages/zed-pkg/zed-interfaces/versions/0.1.1' \
+            > "$RUNNER_TEMP/zed-interface-version.json"
+          python3 - "$RUNNER_TEMP/zed-interface-version.json" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          data = json.loads(Path(sys.argv[1]).read_text())
+          if not isinstance(data, dict):
+              raise SystemExit("registry version response is not an object")
+          sha = data.get("sha256")
+          size = data.get("size")
+          if not isinstance(sha, str) or not re.fullmatch("[0-9a-f]{64}", sha):
+              raise SystemExit("missing canonical archive SHA-256")
+          if type(size) is not int or size <= 0:
+              raise SystemExit("missing positive immutable archive size")
+          source = data.get("source")
+          if not isinstance(source, dict):
+              raise SystemExit("missing registry source provenance")
+          vcs = source.get("vcs_commit")
+          tag = source.get("vcs_tag")
+          if not isinstance(vcs, str) or not re.fullmatch("[0-9a-f]{40}", vcs):
+              raise SystemExit("missing exact source commit")
+          if tag != "v0.1.1":
+              raise SystemExit("unexpected source release tag")
+          if data.get("version") != "0.1.1":
+              raise SystemExit("unexpected registry package version")
+          if data.get("format") != "tar.gz":
+              raise SystemExit("unexpected archive format")
+          print(json.dumps({
+              "registry": "https://zpkg.net",
+              "version": data["version"],
+              "sha256": sha,
+              "size": size,
+              "format": data["format"],
+              "vcs_tag": tag,
+              "vcs_commit": vcs,
+          }, sort_keys=True))
+          print("OBSERVATION ONLY: do not write a lock until immutable source and archive checks are reviewed")
+          PY
