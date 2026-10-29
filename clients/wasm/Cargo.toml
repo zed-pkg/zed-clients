@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 # CLI; a sibling-only path made the crate impossible to consume standalone.
 # Pin the current admitted interfaces main after #105. This revision includes
 # Rust source-path/API changes, so exact-head Rust/WASM gates must prove compatibility.
-zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "0c2ffa7be791a44c8aa2a69ab4b1ea87aab4729c" }
+zed-interfaces = { git = "https://github.com/zed-pkg/zed-interfaces.git", rev = "14bc5ce60324661cfe5ec5e6cdc6792c3108e55b" }
 hex = "0.4"
 js-sys = "0.3"
 percent-encoding = "2"
