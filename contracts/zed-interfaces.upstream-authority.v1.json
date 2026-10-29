@@ -1,7 +1,7 @@
 {
   "schema": "ores.contract-authority-binding/v1",
   "repository": "zed-pkg/zed-interfaces",
-  "commit": "aa0f87be13cdf003600b42a6088202898fcbae8d",
+  "commit": "14bc5ce60324661cfe5ec5e6cdc6792c3108e55b",
   "path": "contracts/",
   "mode": "external-pinned"
 }
