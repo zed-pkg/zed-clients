@@ -49,7 +49,7 @@ def check_cargo_target(root: Path, target_name: str, target_dir: str) -> None:
             try:
                 resolved.relative_to(target_root)
             except ValueError as error:
-                fail(
+                raise ValueError(
                     f"{target_name}: {table_name}.{dependency_name} path {raw_path!r} "
                     f"escapes staged target artifact {target_dir!r}"
                 ) from error
